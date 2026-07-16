@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 配置モデル
 
 - **屋根の水平投影面** = PIO のパス（閉ポリゴン）。
-- **地廻り基準線** = 2 つの**コントロールポイント**（`BaseStart`・`BaseEnd`）で指定する**内蔵の直線**。軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りをパスの辺で制御せず独立に置けるようにしている。コントロールポイント未設定（2 点が一致）なら、パスの最初の辺を基準辺に使うフォールバックに切り替える。
+- **地廻り基準線** = 2 つの**コントロールポイント**で指定する**内蔵の直線**。軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りをパスの辺で制御せず独立に置けるようにしている。コントロールポイントの座標はユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定。フィールド名では読めない）の末尾に `X`／`Y` を付けたフィールドで読む。コントロールポイント未設定（2 点が一致）なら、パスの最初の辺を基準辺に使うフォールバックに切り替える。
 - 垂木は基準線に**直交する向き**で、基準線に沿って `Spacing` 間隔に並ぶ（基準線の始点＝0 から `Spacing` の倍数の位置、両端を含む）。
 - 各垂木は地廻り基準線から**棟側（高い側）と軒先側（低い側）の両方向**へ、屋根投影面でクリップした長さで伸びる（**面全体**）。棟／軒先の向きは、基準線の中点から屋根投影面が広く伸びる側を棟、狭い側（軒の出）を軒先として**自動判定**する（コントロールポイントの始点・終点の順序に依存しない）。
 - 垂木は**勾配なりに傾く**。立ち上がり ＝ 地廻り基準線からの水平距離 × 勾配 ÷ 10。勾配は**寸勾配**（10 の水平に対する立ち上がり）。高さ 0 の基準（データム）は地廻り基準線で、軒の出側（軒先）は負の高さになる。
@@ -91,7 +91,7 @@ pyproject.toml               # パッケージメタデータ
 
 ## VectorWorks へのプラグイン登録（名前・パラメータの一致）
 
-`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS` と、地廻り基準線のコントロールポイント座標 `PARAM_BASE_START_X`/`PARAM_BASE_START_Y`/`PARAM_BASE_END_X`/`PARAM_BASE_END_Y`＝`BaseStartX`/`BaseStartY`/`BaseEndX`/`BaseEndY`）。コントロールポイント（`BaseStart`・`BaseEnd`）は末尾に `X`/`Y` を付けたフィールドで座標が読める。登録手順・パラメータ表は `README.md` を参照。
+`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS` と、地廻り基準線のコントロールポイント座標 `PARAM_BASE_START_X`/`PARAM_BASE_START_Y`/`PARAM_BASE_END_X`/`PARAM_BASE_END_Y`＝`ControlPoint01X`/`ControlPoint01Y`/`ControlPoint02X`/`ControlPoint02Y`）。**コントロールポイントはフィールド名を変えても座標は読めず**、ユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定）の末尾に `X`/`Y` を付けたフィールドで読む。よって地廻り基準線用のコントロールポイントを最初に 2 つ作成すること。登録手順・パラメータ表は `README.md` を参照。
 
 ## 開発プロセス: PR 作成と監視
 
