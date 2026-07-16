@@ -1,16 +1,29 @@
 """垂木の水平投影線・傾きを求めるジオメトリ計算(vs 非依存)。
 
-屋根の水平投影面(閉ポリゴン)・地廻り基準線(投影面の 1 辺)・勾配・
-垂木断面・間隔から、垂木 1 本ごとの命令(``RafterCommand``)を組み立てる。
+屋根の水平投影面(閉ポリゴン)・地廻り基準線・勾配・垂木断面・間隔から、
+垂木 1 本ごとの命令(``RafterCommand``)を組み立てる。
 
 配置モデル(ユーザー確認済み):
 
-- **基準線に直交**: 垂木は地廻り基準線(=軒側の辺)に直交する向きで、
-  基準線に沿って指定間隔で並ぶ。
-- **面全体**: 各垂木は基準線(軒=低い側)から屋根水平投影面の反対側の縁
-  (棟=高い側)まで、水平投影面でクリップした長さで伸びる。
-- **勾配なりに傾く**: 立ち上がり = 基準線からの水平距離 × 勾配/10。
+- **地廻り基準線は内蔵の直線**: 地廻り(軒側の高さ基準)は、屋根の水平投影面の
+  辺ではなく、2 点(2 つのコントロールポイント)で与える**別途の直線**で指定する。
+  軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りを
+  辺で制御せず独立に置けるようにしている(``base_line``)。
+- **基準線に直交**: 垂木は地廻り基準線に直交する向きで、基準線に沿って指定間隔で
+  並ぶ。
+- **面全体・両方向**: 各垂木は地廻り基準線から棟側(高い側)と軒先側(低い側)の
+  **両方向**へ伸び、屋根水平投影面でクリップした長さになる。地廻りより軒先側
+  (軒の出)は基準より下がる。
+- **勾配なりに傾く**: 立ち上がり = 地廻り基準線からの水平距離 × 勾配/10。
+  高さ 0 の基準(データム)は地廻り基準線。棟側は正、軒先側(軒の出)は負の高さ。
   勾配は寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。
+- **棟/軒先の向きの自動判定**: 基準線の中点から屋根投影面が広く伸びる側を棟
+  (高い側)、狭い側(軒の出)を軒先(低い側)として自動的に決める。ユーザーは
+  コントロールポイントの向き(始点・終点の順序)を気にしなくてよい。
+
+``base_line`` が退化(2 点が一致など)している場合は、従来どおりパスの最初の辺を
+地廻り基準線とみなし、内向き(屋根面側)にだけ垂木を伸ばすフォールバックに切り替える
+(コントロールポイント未設定の新規オブジェクトでも何か描けるようにするため)。
 
 計算はエンティティの列挙順・浮動小数の許容誤差に対して決定的。
 """
@@ -81,7 +94,7 @@ def _inward_normal(a: Point, b: Point, pts: list[Point]) -> Point:
 
     符号付き面積(巻き方向)から内向き法線を決める。反時計回り(面積>0)の
     ポリゴンでは進行方向 a→b の左が内側。中点を少しずらした点の内外判定で
-    確認・補正する。
+    確認・補正する。フォールバック(パスの辺を地廻り基準線に使う)で用いる。
     """
     dx = b[0] - a[0]
     dy = b[1] - a[1]
@@ -107,9 +120,8 @@ def _ray_far_intersection(
     """origin から direction(単位)へ伸ばした半直線と、ポリゴン各辺との交点の
     うち最も遠いもの(t>_EPS の最大 t)を返す。交わらなければ None。
 
-    面全体を貫くため、最も遠い交点(棟側の縁)までを垂木の長さにする(凸形状の
-    屋根面では入口=基準線・出口=1 点で、その 1 点が返る)。半直線に平行な辺は
-    交わらないものとして無視する。
+    フォールバック(パスの辺を地廻り基準線に使う)で、辺から屋根面側へ 1 方向に
+    垂木を伸ばすときに用いる。半直線に平行な辺は無視する。
     """
     ox, oy = origin
     dx, dy = direction
@@ -137,6 +149,57 @@ def _ray_far_intersection(
     return best
 
 
+def _line_signed_intersections(
+    origin: Point, axis: Point, pts: list[Point],
+) -> list[float]:
+    """origin を通り axis(単位)方向の**直線**とポリゴン各辺の交点の、符号付き
+    パラメータ t のリスト(交点 = origin + t*axis)。
+
+    正の t は axis 方向、負の t は逆方向。原点自身(|t|<=_EPS)や axis に平行な
+    辺は除外する。地廻り基準線から棟側・軒先側の両方向へ垂木を伸ばすため、
+    半直線ではなく直線として両側の交点を集める。
+    """
+    ox, oy = origin
+    dx, dy = axis
+    n = len(pts)
+    ts: list[float] = []
+    for i in range(n):
+        p = pts[i]
+        q = pts[(i + 1) % n]
+        ex = q[0] - p[0]
+        ey = q[1] - p[1]
+        denom = dx * (-ey) - dy * (-ex)
+        if abs(denom) <= _EPS:
+            continue  # 平行(または退化した辺)
+        rhs_x = p[0] - ox
+        rhs_y = p[1] - oy
+        t = (rhs_x * (-ey) - rhs_y * (-ex)) / denom
+        u = (dx * rhs_y - dy * rhs_x) / denom
+        if u < -_EPS or u > 1.0 + _EPS:
+            continue
+        if abs(t) <= _EPS:
+            continue  # 原点(基準線上)は除外
+        ts.append(t)
+    return ts
+
+
+def _choose_up_normal(
+    mid: Point, left: Point, right: Point, pts: list[Point],
+) -> Point:
+    """棟(高い側)を向く法線を、基準線の中点から屋根投影面が広く伸びる側で決める。
+
+    left(基準線の進行方向左)・right(右)それぞれの向きへ屋根投影面がどこまで
+    伸びるかを中点からの交点で測り、広い側を棟(=垂木が長く伸びる高い側)とする。
+    狭い側が軒先(軒の出)。同程度なら left を採用して決定的にする。
+    """
+    ts = _line_signed_intersections(mid, left, pts)
+    if not ts:
+        return left
+    left_ext = max((t for t in ts if t > 0.0), default=0.0)   # left 側の伸び
+    right_ext = -min((t for t in ts if t < 0.0), default=0.0)  # right 側の伸び
+    return left if left_ext >= right_ext else right
+
+
 def make_member_id(width: float, height: float) -> str:
     """垂木の構造材 ID "{幅}×{成} - 垂木" を組み立てる(整数寸は小数点なし)。"""
     return f'{_format_mm(width)}×{_format_mm(height)} - 垂木'
@@ -147,10 +210,27 @@ def _format_mm(value: float) -> str:
     return f'{value:g}'
 
 
+def _resolve_base_line(
+    base_line: list[list[float]] | None, pts: list[Point],
+) -> tuple[Point, Point, bool]:
+    """地廻り基準線の 2 端点と、フリーモードかどうかを返す。
+
+    ``base_line`` が有効(2 点が離れている)ならそれを使う(フリーモード)。
+    退化・未指定ならパスの最初の辺を基準辺に使うフォールバック(非フリーモード)。
+    """
+    if base_line is not None and len(base_line) >= 2:
+        p1 = (float(base_line[0][0]), float(base_line[0][1]))
+        p2 = (float(base_line[1][0]), float(base_line[1][1]))
+        if _distance(p1, p2) > _EPS:
+            return p1, p2, True
+    # フォールバック: パスの最初の辺を地廻り基準線とみなす
+    return pts[0], pts[1], False
+
+
 def build_rafter_commands(
     path: list[list[float]],
     *,
-    base_edge: int,
+    base_line: list[list[float]] | None,
     slope: float,
     width: float,
     height: float,
@@ -161,8 +241,9 @@ def build_rafter_commands(
 
     Args:
         path: 屋根水平投影面の外形頂点列 [[x, y], ...](PIO のパス。閉ポリゴン)。
-        base_edge: 地廻り基準線とする辺の番号(1 始まり)。辺 k は頂点 k と
-            頂点 k+1 を結ぶ。頂点数で剰余を取るため範囲外でも巻き込む。
+        base_line: 地廻り基準線の 2 端点 [[x1, y1], [x2, y2]](コントロール
+            ポイント)。垂木はこの直線に直交し、直線に沿って ``spacing`` 間隔で
+            並ぶ。``None`` や退化した線の場合はパスの最初の辺を基準辺に使う。
         slope: 寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。
         width: 垂木幅 (mm, 基準線方向の断面寸法)。
         height: 垂木成 (mm)。
@@ -170,51 +251,70 @@ def build_rafter_commands(
         rafter_class: 各垂木に割り当てる作図クラス名。
 
     Returns:
-        垂木命令のリスト。頂点が 3 点未満・基準辺が退化・間隔が 0 以下など
+        垂木命令のリスト。頂点が 3 点未満・基準線が退化・間隔が 0 以下など
         垂木を並べられない場合は空リスト。
     """
     pts = _dedupe_polygon(path)
     if len(pts) < 3 or spacing <= _EPS:
         return []
 
-    n = len(pts)
-    i0 = base_edge - 1
-    # 1 始まりの辺番号を 0 始まりに直し、頂点数で巻き込む(範囲外・負値も許容)
-    i0 = ((i0 % n) + n) % n
-    a = pts[i0]
-    b = pts[(i0 + 1) % n]
-    base_len = _distance(a, b)
+    p1, p2, free_mode = _resolve_base_line(base_line, pts)
+    base_len = _distance(p1, p2)
     if base_len <= _EPS:
         return []
 
-    ex = (b[0] - a[0]) / base_len
-    ey = (b[1] - a[1]) / base_len
-    nx, ny = _inward_normal(a, b, pts)
-    if abs(nx) <= _EPS and abs(ny) <= _EPS:
-        return []
+    ex = (p2[0] - p1[0]) / base_len
+    ey = (p2[1] - p1[1]) / base_len
+
+    if free_mode:
+        # 基準線に直交する 2 法線(進行方向の左・右)。棟側を自動判定する。
+        left = (-ey, ex)
+        right = (ey, -ex)
+        mid = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
+        up = _choose_up_normal(mid, left, right, pts)
+    else:
+        # フォールバック: パスの辺の内向き(屋根面側)を棟側とする。
+        up = _inward_normal(p1, p2, pts)
+        if abs(up[0]) <= _EPS and abs(up[1]) <= _EPS:
+            return []
 
     member_id = make_member_id(width, height)
     commands: list[RafterCommand] = []
 
     # 基準線に沿って 0, spacing, 2*spacing, ... の位置に垂木を並べる
-    # (両端の角を含む。base_len を超えない範囲)。
+    # (両端を含む。base_len を超えない範囲)。
     steps = int(math.floor(base_len / spacing + _EPS)) + 1
     for k in range(steps):
         s = min(k * spacing, base_len)
-        origin = (a[0] + ex * s, a[1] + ey * s)
-        t_max = _ray_far_intersection(origin, (nx, ny), pts)
-        if t_max is None or t_max <= _EPS:
+        origin = (p1[0] + ex * s, p1[1] + ey * s)
+        if free_mode:
+            # 棟側(正)・軒先側(負)の両方向へ屋根投影面までクリップする。
+            ts = _line_signed_intersections(origin, up, pts)
+            if len(ts) < 2:
+                continue
+            t_min = min(ts)  # 最も軒先側(低い側)
+            t_max = max(ts)  # 最も棟側(高い側)
+        else:
+            # フォールバック: 基準辺(t=0)から屋根面側の最遠縁まで 1 方向。
+            t_far = _ray_far_intersection(origin, up, pts)
+            if t_far is None or t_far <= _EPS:
+                continue
+            t_min = 0.0
+            t_max = t_far
+        if t_max - t_min <= _EPS:
             continue
-        end = (origin[0] + nx * t_max, origin[1] + ny * t_max)
-        rise = t_max * slope / 10.0
+        start = (origin[0] + up[0] * t_min, origin[1] + up[1] * t_min)
+        end = (origin[0] + up[0] * t_max, origin[1] + up[1] * t_max)
+        # 立ち上がり = 地廻り基準線(t=0)からの水平距離 × 勾配/10。
+        # 高さ 0 の基準は地廻り基準線。軒先側(t<0)は負になる。
         commands.append({
             'class': rafter_class,
             'member_id': member_id,
-            'start': [origin[0], origin[1]],
+            'start': [start[0], start[1]],
             'end': [end[0], end[1]],
             'width': width,
             'height': height,
-            'elevation': 0.0,
-            'end_elevation': rise,
+            'elevation': t_min * slope / 10.0,
+            'end_elevation': t_max * slope / 10.0,
         })
     return commands
