@@ -123,8 +123,10 @@ def _ssl_contexts() -> list[ssl.SSLContext]:
     contexts: list[ssl.SSLContext] = []
     try:
         contexts.append(ssl.create_default_context())
-    except Exception:
-        pass
+    except Exception as error:
+        # 既定コンテキストを作れない環境では候補から外すだけでよい
+        # (後続の certifi 由来コンテキストで検証を試みる)。診断用に記録する。
+        _last_network_error.append(f"{type(error).__name__}: {error}")
     for module_name in ("certifi", "pip._vendor.certifi"):
         try:
             certifi = importlib.import_module(module_name)
@@ -356,6 +358,8 @@ def _alert(message: str) -> None:
 
         vs.AlrtDialog(message)
     except Exception:
+        # vs が無い(VectorWorks 外)・ダイアログ表示に失敗した等でも、
+        # 通知はベストエフォートのため黙って無視する(本体実行を妨げない)。
         pass
 
 
