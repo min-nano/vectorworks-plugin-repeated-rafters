@@ -18,12 +18,16 @@ def _make_vs_mock(
 ) -> MagicMock:
     verts = RECT if vertices is None else vertices
     values = {
-        'BaseEdge': '1',
         'Slope': '4',
         'Width': '45',
         'Height': '60',
         'Spacing': '2000',
         'RafterClass': '',
+        # コントロールポイント既定は未設定(0,0)→退化→最初の辺へフォールバック
+        'BaseStartX': '',
+        'BaseStartY': '',
+        'BaseEndX': '',
+        'BaseEndY': '',
     }
     if params:
         values.update(params)
@@ -63,7 +67,8 @@ class TestReadHelpers:
         vs_mock = _make_vs_mock(params={'RafterClass': ''})
         params = pkg._read_parameters(vs_mock, object())
         assert params['rafter_class'] == pkg.DEFAULT_CLASS
-        assert params['base_edge'] == 1
+        # コントロールポイント未設定 → (0,0)-(0,0)。退化の扱いは計算フェーズへ委ねる
+        assert params['base_line'] == [[0.0, 0.0], [0.0, 0.0]]
         assert params['slope'] == 4.0
         assert params['width'] == 45.0
         assert params['height'] == 60.0
@@ -74,11 +79,20 @@ class TestReadHelpers:
         params = pkg._read_parameters(vs_mock, object())
         assert params['rafter_class'] == '垂木クラス'
 
+    def test_read_parameters_reads_control_points(self) -> None:
+        vs_mock = _make_vs_mock(params={
+            'BaseStartX': '100', 'BaseStartY': '200',
+            'BaseEndX': '5000', 'BaseEndY': '250',
+        })
+        params = pkg._read_parameters(vs_mock, object())
+        assert params['base_line'] == [[100.0, 200.0], [5000.0, 250.0]]
+
     def test_read_parameters_falls_back_on_invalid(self) -> None:
-        vs_mock = _make_vs_mock(params={'Slope': 'abc', 'BaseEdge': ''})
+        vs_mock = _make_vs_mock(params={'Slope': 'abc', 'BaseStartX': 'xyz'})
         params = pkg._read_parameters(vs_mock, object())
         assert params['slope'] == pkg.DEFAULT_SLOPE
-        assert params['base_edge'] == pkg.DEFAULT_BASE_EDGE
+        # 不正なコントロールポイント座標は 0.0 に落ちる
+        assert params['base_line'][0][0] == 0.0
 
 
 def _run(vs_mock: MagicMock) -> None:
@@ -97,6 +111,19 @@ class TestRun:
         _run(vs_mock)
         # 長方形 6000 幅 / 間隔 2000 → 4 本の構造材を配置
         assert vs_mock.CreateCustomObjectPath.call_count == 4
+
+    def test_run_with_control_point_base_line(self) -> None:
+        # RECT 内側 y=1000 の地廻り線。間隔 2000 → 4 本。軒の出側は基準より下。
+        vs_mock = _make_vs_mock(params={
+            'Spacing': '2000',
+            'BaseStartX': '0', 'BaseStartY': '1000',
+            'BaseEndX': '6000', 'BaseEndY': '1000',
+        })
+        _run(vs_mock)
+        assert vs_mock.CreateCustomObjectPath.call_count == 4
+        # 始端(軒先側)は地廻り(z=0)より下: Move3D の z にマイナスが現れる
+        move_zs = [c.args[2] for c in vs_mock.Move3D.call_args_list]
+        assert any(z < 0 for z in move_zs)
 
     def test_run_returns_early_when_info_not_ok(self) -> None:
         vs_mock = _make_vs_mock(info_ok=False)

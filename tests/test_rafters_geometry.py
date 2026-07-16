@@ -17,7 +17,7 @@ CLASS = '04構造-02木造-05小屋組-05垂木'
 
 def _build(path: list[list[float]], **kwargs: object) -> list:
     params: dict = {
-        'base_edge': 1,
+        'base_line': None,   # 既定はフォールバック(パスの最初の辺)
         'slope': 4.0,
         'width': 45.0,
         'height': 60.0,
@@ -36,7 +36,9 @@ class TestMakeMemberId:
         assert make_member_id(45.5, 60.0) == '45.5×60 - 垂木'
 
 
-class TestRectangle:
+class TestFallbackToFirstEdge:
+    """base_line 未指定(退化)時はパスの最初の辺を地廻り基準線にする。"""
+
     def test_spacing_gives_expected_count(self) -> None:
         # 下辺長 6000 / 間隔 1000 → 0,1000,...,6000 の 7 本
         rafters = _build(RECT, spacing=1000.0)
@@ -57,7 +59,7 @@ class TestRectangle:
             assert r['end'][1] == pytest.approx(4000.0)
 
     def test_rise_follows_slope(self) -> None:
-        # 立ち上がり = 水平投影長(4000) × 勾配(4)/10 = 1600
+        # 立ち上がり = 水平投影長(4000) × 勾配(4)/10 = 1600。基準辺が高さ 0。
         rafters = _build(RECT, slope=4.0, spacing=2000.0)
         for r in rafters:
             assert r['elevation'] == pytest.approx(0.0)
@@ -75,22 +77,60 @@ class TestRectangle:
             assert r['class'] == CLASS
             assert r['member_id'] == '45×105 - 垂木'
 
-    def test_base_edge_selects_perpendicular_direction(self) -> None:
-        # 辺 2 = 右辺 (6000,0)->(6000,4000)。垂木は左向き、長さ 6000。
-        rafters = _build(RECT, base_edge=2, spacing=1000.0)
-        # 右辺長 4000 / 間隔 1000 → 5 本
-        assert len(rafters) == 5
-        for r in rafters:
-            assert r['start'][0] == pytest.approx(6000.0)
-            assert r['end'][0] == pytest.approx(0.0)
-            # 立ち上がり = 6000 × 4/10 = 2400
-            assert r['end_elevation'] == pytest.approx(2400.0)
+    def test_degenerate_base_line_falls_back(self) -> None:
+        # 2 点が一致する base_line は退化 → 最初の辺へフォールバック
+        degenerate = _build(RECT, base_line=[[10.0, 10.0], [10.0, 10.0]],
+                            spacing=2000.0)
+        assert degenerate == _build(RECT, base_line=None, spacing=2000.0)
 
-    def test_base_edge_wraps_modulo_vertex_count(self) -> None:
-        # 辺 5 は頂点 4 つの長方形では辺 1 に巻き込まれる(5-1=4, 4%4=0)
-        wrapped = _build(RECT, base_edge=5, spacing=1000.0)
-        first = _build(RECT, base_edge=1, spacing=1000.0)
-        assert wrapped == first
+
+class TestFreeBaseLine:
+    """地廻り基準線をコントロールポイント(2 点)で内蔵直線として与える。"""
+
+    # RECT の内側 y=1000 に水平な地廻り線。軒の出 1000(y=0 まで)、棟側 3000。
+    BASE = [[0.0, 1000.0], [6000.0, 1000.0]]
+
+    def test_spans_both_directions_from_base_line(self) -> None:
+        rafters = _build(RECT, base_line=self.BASE, spacing=2000.0)
+        # 基準線長 6000 / 間隔 2000 → x = 0,2000,4000,6000 の 4 本
+        assert len(rafters) == 4
+        for r in rafters:
+            # 始端=軒先側(y=0、軒の出の先)、終端=棟側(y=4000)
+            assert r['start'][1] == pytest.approx(0.0)
+            assert r['end'][1] == pytest.approx(4000.0)
+            # 基準線に直交(x 一定)
+            assert r['start'][0] == pytest.approx(r['end'][0])
+
+    def test_datum_at_base_line_with_signed_elevation(self) -> None:
+        rafters = _build(RECT, base_line=self.BASE, slope=4.0, spacing=2000.0)
+        for r in rafters:
+            # 軒先側(基準線から 1000 下)は負: -1000 × 4/10 = -400
+            assert r['elevation'] == pytest.approx(-400.0)
+            # 棟側(基準線から 3000 上): 3000 × 4/10 = 1200
+            assert r['end_elevation'] == pytest.approx(1200.0)
+            # 全長の立ち上がり = 4000 × 4/10 = 1600
+            assert r['end_elevation'] - r['elevation'] == pytest.approx(1600.0)
+
+    def test_ridge_side_auto_detected_regardless_of_point_order(self) -> None:
+        # 始点・終点を入れ替えても棟(広い側)・軒先(狭い側)は同じに決まる
+        forward = _build(RECT, base_line=self.BASE, spacing=2000.0)
+        reversed_line = [self.BASE[1], self.BASE[0]]
+        backward = _build(RECT, base_line=reversed_line, spacing=2000.0)
+        f_ends = sorted((r['start'][1], r['end'][1]) for r in forward)
+        b_ends = sorted((r['start'][1], r['end'][1]) for r in backward)
+        assert f_ends == pytest.approx(b_ends)
+        for r in forward + backward:
+            assert r['start'][1] == pytest.approx(0.0)    # 軒先(低い)
+            assert r['end'][1] == pytest.approx(4000.0)   # 棟(高い)
+
+    def test_base_line_not_parallel_to_edges(self) -> None:
+        # 斜めの地廻り線でも直交方向に垂木が伸びる(退化しない)
+        rafters = _build(
+            RECT, base_line=[[1000.0, 500.0], [5000.0, 1500.0]],
+            spacing=1500.0)
+        assert len(rafters) >= 1
+        for r in rafters:
+            assert r['start'] != r['end']
 
 
 class TestTriangle:
@@ -98,7 +138,7 @@ class TestTriangle:
     TRI = [[0.0, 0.0], [6000.0, 0.0], [3000.0, 3000.0]]
 
     def test_lengths_vary_with_position(self) -> None:
-        rafters = _build(self.TRI, base_edge=1, spacing=1000.0)
+        rafters = _build(self.TRI, base_line=None, spacing=1000.0)
         assert len(rafters) >= 1
         # 中央(x=3000 付近)の垂木が最も長い(棟に届く)
         rises = [r['end_elevation'] for r in rafters]
@@ -128,7 +168,7 @@ class TestDegenerate:
 class TestBuildDocument:
     def test_wraps_commands_in_document(self) -> None:
         doc = build_document(
-            RECT, base_edge=1, slope=4.0, width=45.0, height=60.0,
+            RECT, base_line=None, slope=4.0, width=45.0, height=60.0,
             spacing=2000.0, rafter_class=CLASS)
         assert doc['version'] == 1
         assert len(doc['rafters']) == 4

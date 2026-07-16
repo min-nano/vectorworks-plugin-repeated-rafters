@@ -11,10 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 配置モデル
 
 - **屋根の水平投影面** = PIO のパス（閉ポリゴン）。
-- **地廻り基準線** = パスの 1 辺（`BaseEdge` パラメータで辺番号を 1 始まりで指定。既定は最初の辺）。
-- 垂木は基準辺に**直交する向き**で、基準辺に沿って `Spacing` 間隔に並ぶ（基準辺の始点＝0 から `Spacing` の倍数の位置、両端の角を含む）。
-- 各垂木は基準辺（軒＝低い側）から屋根投影面の反対側の縁（棟＝高い側）まで、投影面でクリップした長さで伸びる（**面全体**）。
-- 垂木は**勾配なりに傾く**。立ち上がり ＝ 基準辺からの水平距離 × 勾配 ÷ 10。勾配は**寸勾配**（10 の水平に対する立ち上がり）。
+- **地廻り基準線** = 2 つの**コントロールポイント**（`BaseStart`・`BaseEnd`）で指定する**内蔵の直線**。軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りをパスの辺で制御せず独立に置けるようにしている。コントロールポイント未設定（2 点が一致）なら、パスの最初の辺を基準辺に使うフォールバックに切り替える。
+- 垂木は基準線に**直交する向き**で、基準線に沿って `Spacing` 間隔に並ぶ（基準線の始点＝0 から `Spacing` の倍数の位置、両端を含む）。
+- 各垂木は地廻り基準線から**棟側（高い側）と軒先側（低い側）の両方向**へ、屋根投影面でクリップした長さで伸びる（**面全体**）。棟／軒先の向きは、基準線の中点から屋根投影面が広く伸びる側を棟、狭い側（軒の出）を軒先として**自動判定**する（コントロールポイントの始点・終点の順序に依存しない）。
+- 垂木は**勾配なりに傾く**。立ち上がり ＝ 地廻り基準線からの水平距離 × 勾配 ÷ 10。勾配は**寸勾配**（10 の水平に対する立ち上がり）。高さ 0 の基準（データム）は地廻り基準線で、軒の出側（軒先）は負の高さになる。
 
 今後、母屋・鼻母屋・広小舞などの付随要素の描画を追加する余地があります（命令セットに命令種別を足す）。
 
@@ -36,7 +36,7 @@ src/
         document.py           # 命令セットのスキーマ定義・検証（vs 非依存）
         rafters/              # フェーズ1: ジオメトリ計算（vs 非依存）
             __init__.py       # build_document(path, ...) -> dict
-            geometry.py       # 屋根投影面・基準辺・勾配・断面・間隔 → rafter 命令（ポリゴン/レイ交点計算）
+            geometry.py       # 屋根投影面・地廻り基準線・勾配・断面・間隔 → rafter 命令（ポリゴン/レイ交点計算）
         vw/                   # フェーズ2: VectorWorks 描画（vs 依存）
             __init__.py       # execute_document(document) -> 実行数 dict
             rafter.py         # rafter 命令 → 構造材（StructuralMember、傾斜材）
@@ -68,7 +68,7 @@ pyproject.toml               # パッケージメタデータ
 
 1. **オブジェクト取得** — `vs.GetCustomObjectInfo()` で PIO のハンドルを得る（失敗時は何もしない）。
 2. **パス読み取り** — `_read_path_points()` が `vs.GetCustomObjectPath()` → `vs.GetVertNum()` → `vs.GetPolylineVertex()`（頂点は 1 始まり）で屋根投影面の頂点列を読む。
-3. **パラメータ読み取り** — `_read_parameters()` が `vs.GetRField()` で勾配・基準辺・断面・間隔・クラスを読む（空/不正は既定値）。
+3. **パラメータ読み取り** — `_read_parameters()` が `vs.GetRField()` で勾配・地廻り基準線（コントロールポイント）・断面・間隔・クラスを読む（空/不正は既定値）。
 4. **計算（フェーズ1）** — `rafters.build_document(path, ...)` で JSON 命令セットを組み立てる。
 5. **JSON 経由の受け渡し** — `json.dumps` → `json.loads` を通し直列化可能性を保証。
 6. **描画（フェーズ2）** — `vw.execute_document(document)` が検証後、垂木を描画する。
@@ -76,9 +76,11 @@ pyproject.toml               # パッケージメタデータ
 ### 垂木のジオメトリ計算（rafters/geometry.py）
 
 - `_dedupe_polygon`: パス頂点の連続重複・終端の閉じ重複を除去して閉ポリゴンの頂点列にする。
-- `_inward_normal(a, b, pts)`: 基準辺 a→b のポリゴン内部を向く単位法線（＝垂木の向き）。符号付き面積（巻き方向）から決め、中点をずらした点の内外判定で補正する。
-- `_ray_far_intersection(origin, dir, pts)`: 基準辺上の点から内向き法線へ伸ばした半直線と、ポリゴン各辺との交点のうち**最も遠いもの**（t>ε の最大 t）。面全体を貫くため最遠の縁（棟側）までを垂木の長さにする（凸な屋根面では出口 1 点）。半直線に平行な辺は無視する。
-- `build_rafter_commands`: 基準辺（`BaseEdge` を 1 始まり→0 始まりに直し頂点数で巻き込む）に沿って `Spacing` 間隔の各点で内向きにレイを飛ばし、始端（基準辺上）から最遠交点（棟側）までの垂木命令を組み立てる。立ち上がり＝交点までの距離 × 勾配÷10 を `end_elevation` に入れる。頂点 3 点未満・基準辺退化・間隔 0 以下・交点なしは空/スキップ。計算は入力順・許容誤差に対して決定的。
+- `_resolve_base_line(base_line, pts)`: 地廻り基準線の 2 端点とフリーモードか否かを返す。`base_line`（コントロールポイント 2 点）が有効（2 点が離れている）ならフリーモード、退化・未指定ならパスの最初の辺を基準辺に使うフォールバック（非フリーモード）。
+- `_line_signed_intersections(origin, axis, pts)`: origin を通り axis 方向の**直線**とポリゴン各辺の符号付き交点パラメータ t のリスト。正の t は axis 方向、負は逆方向。原点自身（|t|≤ε）と平行辺は除外。地廻りから両方向へ伸ばすため半直線ではなく直線で両側を集める。
+- `_choose_up_normal(mid, left, right, pts)`: 棟（高い側）を向く法線を、基準線の中点から屋根投影面が広く伸びる側で決める（狭い側が軒先＝軒の出）。同程度なら left を採用して決定的にする。
+- `_inward_normal(a, b, pts)` / `_ray_far_intersection(origin, dir, pts)`: **フォールバック（パスの辺を基準線に使う）専用**。辺の内向き単位法線と、その内向き半直線とポリゴン各辺の最遠交点（t>ε の最大 t）。基準辺（t=0）から屋根面側の縁まで 1 方向に伸ばす（＝旧来の挙動）。
+- `build_rafter_commands`: 地廻り基準線に沿って `Spacing` 間隔の各点で、フリーモードは棟側の法線に沿って両方向の符号付き交点の最小 t（軒先側）〜最大 t（棟側）、フォールバックは内向き最遠交点までの垂木命令を組み立てる。`elevation`＝t_min×勾配÷10（軒先側、負になりうる）、`end_elevation`＝t_max×勾配÷10（棟側）。高さ 0 の基準は地廻り基準線（t=0）。頂点 3 点未満・基準線退化・間隔 0 以下・交点 2 未満は空/スキップ。計算は入力順・許容誤差に対して決定的。
 - `make_member_id(width, height)`: 構造材 ID `"{幅}×{成} - 垂木"`（整数寸は小数点なし）。
 
 ### 垂木の描画（vw/rafter.py）
@@ -89,7 +91,7 @@ pyproject.toml               # パッケージメタデータ
 
 ## VectorWorks へのプラグイン登録（名前・パラメータの一致）
 
-`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`繰り返し垂木`、`PARAM_SLOPE`/`PARAM_BASE_EDGE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS`）。登録手順・パラメータ表は `README.md` を参照。
+`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS` と、地廻り基準線のコントロールポイント座標 `PARAM_BASE_START_X`/`PARAM_BASE_START_Y`/`PARAM_BASE_END_X`/`PARAM_BASE_END_Y`＝`BaseStartX`/`BaseStartY`/`BaseEndX`/`BaseEndY`）。コントロールポイント（`BaseStart`・`BaseEnd`）は末尾に `X`/`Y` を付けたフィールドで座標が読める。登録手順・パラメータ表は `README.md` を参照。
 
 ## 開発プロセス: PR 作成と監視
 

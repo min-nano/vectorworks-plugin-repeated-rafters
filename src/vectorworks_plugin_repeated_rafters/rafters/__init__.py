@@ -15,7 +15,7 @@ __all__ = ['build_document', 'build_rafter_commands', 'make_member_id']
 def build_document(
     path: list[list[float]],
     *,
-    base_edge: int,
+    base_line: list[list[float]] | None,
     slope: float,
     width: float,
     height: float,
@@ -26,7 +26,8 @@ def build_document(
 
     Args:
         path: 屋根水平投影面の外形頂点列 [[x, y], ...](PIO のパス。閉ポリゴン)。
-        base_edge: 地廻り基準線とする辺の番号(1 始まり)。
+        base_line: 地廻り基準線の 2 端点 [[x1, y1], [x2, y2]](コントロール
+            ポイント)。``None`` や退化した線の場合はパスの最初の辺を基準辺に使う。
         slope: 寸勾配(10 の水平に対する立ち上がり)。
         width: 垂木幅 (mm)。
         height: 垂木成 (mm)。
@@ -37,7 +38,7 @@ def build_document(
         'version': DOCUMENT_VERSION,
         'rafters': build_rafter_commands(
             path,
-            base_edge=base_edge,
+            base_line=base_line,
             slope=slope,
             width=width,
             height=height,

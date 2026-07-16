@@ -11,7 +11,7 @@
 
 このモジュールの ``run()`` は **PIO のオブジェクトスクリプト本体**で、VectorWorks が
 オブジェクトの再生成(リセット)のたびに呼び出す。オブジェクトのパス(=屋根の
-水平投影面)とパラメータ(勾配・基準辺・断面・間隔・クラス)を vs から読み取り、
+水平投影面)とパラメータ(勾配・地廻り基準線・断面・間隔・クラス)を vs から読み取り、
 2 フェーズを通して垂木を描く。
 
 **VectorWorks 側のプラグイン登録**: このパッケージが動くには、VectorWorks の
@@ -19,15 +19,28 @@
 登録し、そのオブジェクトスクリプトに ``main.py`` の内容を貼り付ける必要がある
 (名前・パラメータ名はここの定数と一致させること):
 
-- プラグイン名(レコード名): ``繰り返し垂木`` (= ``PLUGIN_NAME``)
+- プラグイン名(レコード名): ``垂木群`` (= ``PLUGIN_NAME``)
 - オブジェクトタイプ: パス(Path)。パスが屋根の水平投影面になる。
-- パラメータ(いずれもフィールド名 = 下記 ``PARAM_*``):
+- パラメータ:
   - ``Slope``      実数  勾配(寸勾配、10 の水平に対する立ち上がり)
-  - ``BaseEdge``   整数  地廻り基準線とするパスの辺番号(1 始まり)
+  - ``BaseStart`` コントロールポイント  地廻り基準線の始点
+    (フィールド ``BaseStartX`` / ``BaseStartY``)
+  - ``BaseEnd``   コントロールポイント  地廻り基準線の終点
+    (フィールド ``BaseEndX`` / ``BaseEndY``)
   - ``Width``      実数  垂木幅 (mm)
   - ``Height``     実数  垂木成 (mm)
   - ``Spacing``    実数  垂木の間隔 (mm)
   - ``RafterClass`` 文字 垂木に割り当てる作図クラス名
+
+軒の出があると屋根の水平投影面の軒側の辺は軒先であって地廻りではないため、地廻り
+基準線はパスの辺ではなく **2 つのコントロールポイント(``BaseStart`` / ``BaseEnd``)で
+与える内蔵の直線**で指定する。垂木はこの直線に直交し、直線に沿って ``Spacing``
+間隔で並び、地廻りから棟側・軒先側の両方向へ屋根投影面までクリップして伸びる
+(高さ 0 の基準は地廻り線。軒の出側は負の高さ)。コントロールポイントが未設定
+(退化)なら、パスの最初の辺を地廻り基準線とみなすフォールバックで描く。
+
+コントロールポイント座標(``GetRField`` の ``BaseStartX`` 等)とパス頂点
+(``GetPolylineVertex``)が同一座標系で読めることは VectorWorks 上で確認する。
 """
 from __future__ import annotations
 
@@ -40,19 +53,23 @@ __all__ = ['build_document', 'run', 'validate_document']
 
 # PIO のプラグイン名(= GetRField / SetRField のレコード名)。VectorWorks の
 # プラグイン登録名と一致させること。
-PLUGIN_NAME = '繰り返し垂木'
+PLUGIN_NAME = '垂木群'
 
 # パラメータ(レコードフィールド)名。VectorWorks のプラグイン登録と一致させる。
 PARAM_SLOPE = 'Slope'
-PARAM_BASE_EDGE = 'BaseEdge'
 PARAM_WIDTH = 'Width'
 PARAM_HEIGHT = 'Height'
 PARAM_SPACING = 'Spacing'
 PARAM_CLASS = 'RafterClass'
+# 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイント
+# パラメータ名の末尾に X/Y を付けたフィールドで各座標を保持する。
+PARAM_BASE_START_X = 'BaseStartX'
+PARAM_BASE_START_Y = 'BaseStartY'
+PARAM_BASE_END_X = 'BaseEndX'
+PARAM_BASE_END_Y = 'BaseEndY'
 
 # パラメータ未設定時の既定値。
 DEFAULT_SLOPE = 4.0          # 4 寸勾配
-DEFAULT_BASE_EDGE = 1        # パスの最初の辺
 DEFAULT_WIDTH = 45.0         # 垂木幅 45mm
 DEFAULT_HEIGHT = 60.0        # 垂木成 60mm
 DEFAULT_SPACING = 455.0      # 1.5 尺 ≒ 455mm
@@ -65,16 +82,6 @@ def _to_float(value: Any, default: float) -> float:
         return default
     try:
         return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _to_int(value: Any, default: int) -> int:
-    """vs のパラメータ値を int にする(空/不正は default)。"""
-    if value is None or value == '':
-        return default
-    try:
-        return int(float(value))
     except (TypeError, ValueError):
         return default
 
@@ -98,14 +105,32 @@ def _read_path_points(vs: Any, obj: Any) -> list[list[float]]:
     return points
 
 
+def _read_base_line(vs: Any, obj: Any) -> list[list[float]]:
+    """地廻り基準線の 2 端点 [[x1, y1], [x2, y2]] をコントロールポイントから読む。
+
+    VectorWorks はコントロールポイントの座標をフィールド名末尾の X/Y で保持する。
+    2 点が一致(未設定など)する場合でもそのまま返し、退化の扱い(パスの最初の辺へ
+    のフォールバック)はジオメトリ計算フェーズに委ねる。
+    """
+    return [
+        [
+            _to_float(vs.GetRField(obj, PLUGIN_NAME, PARAM_BASE_START_X), 0.0),
+            _to_float(vs.GetRField(obj, PLUGIN_NAME, PARAM_BASE_START_Y), 0.0),
+        ],
+        [
+            _to_float(vs.GetRField(obj, PLUGIN_NAME, PARAM_BASE_END_X), 0.0),
+            _to_float(vs.GetRField(obj, PLUGIN_NAME, PARAM_BASE_END_Y), 0.0),
+        ],
+    ]
+
+
 def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
-    """PIO のパラメータ(勾配・基準辺・断面・間隔・クラス)を読み取る。"""
+    """PIO のパラメータ(勾配・地廻り基準線・断面・間隔・クラス)を読み取る。"""
     rafter_class = vs.GetRField(obj, PLUGIN_NAME, PARAM_CLASS)
     if not rafter_class:
         rafter_class = DEFAULT_CLASS
     return {
-        'base_edge': _to_int(
-            vs.GetRField(obj, PLUGIN_NAME, PARAM_BASE_EDGE), DEFAULT_BASE_EDGE),
+        'base_line': _read_base_line(vs, obj),
         'slope': _to_float(
             vs.GetRField(obj, PLUGIN_NAME, PARAM_SLOPE), DEFAULT_SLOPE),
         'width': _to_float(
