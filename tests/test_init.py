@@ -24,10 +24,10 @@ def _make_vs_mock(
         'Spacing': '2000',
         'RafterClass': '',
         # コントロールポイント既定は未設定(0,0)→退化→最初の辺へフォールバック
-        'BaseStartX': '',
-        'BaseStartY': '',
-        'BaseEndX': '',
-        'BaseEndY': '',
+        'ControlPoint01X': '',
+        'ControlPoint01Y': '',
+        'ControlPoint02X': '',
+        'ControlPoint02Y': '',
     }
     if params:
         values.update(params)
@@ -81,14 +81,14 @@ class TestReadHelpers:
 
     def test_read_parameters_reads_control_points(self) -> None:
         vs_mock = _make_vs_mock(params={
-            'BaseStartX': '100', 'BaseStartY': '200',
-            'BaseEndX': '5000', 'BaseEndY': '250',
+            'ControlPoint01X': '100', 'ControlPoint01Y': '200',
+            'ControlPoint02X': '5000', 'ControlPoint02Y': '250',
         })
         params = pkg._read_parameters(vs_mock, object())
         assert params['base_line'] == [[100.0, 200.0], [5000.0, 250.0]]
 
     def test_read_parameters_falls_back_on_invalid(self) -> None:
-        vs_mock = _make_vs_mock(params={'Slope': 'abc', 'BaseStartX': 'xyz'})
+        vs_mock = _make_vs_mock(params={'Slope': 'abc', 'ControlPoint01X': 'xyz'})
         params = pkg._read_parameters(vs_mock, object())
         assert params['slope'] == pkg.DEFAULT_SLOPE
         # 不正なコントロールポイント座標は 0.0 に落ちる
@@ -116,8 +116,8 @@ class TestRun:
         # RECT 内側 y=1000 の地廻り線。間隔 2000 → 4 本。軒の出側は基準より下。
         vs_mock = _make_vs_mock(params={
             'Spacing': '2000',
-            'BaseStartX': '0', 'BaseStartY': '1000',
-            'BaseEndX': '6000', 'BaseEndY': '1000',
+            'ControlPoint01X': '0', 'ControlPoint01Y': '1000',
+            'ControlPoint02X': '6000', 'ControlPoint02Y': '1000',
         })
         _run(vs_mock)
         assert vs_mock.CreateCustomObjectPath.call_count == 4

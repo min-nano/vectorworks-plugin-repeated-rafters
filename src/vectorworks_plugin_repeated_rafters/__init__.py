@@ -23,24 +23,29 @@
 - オブジェクトタイプ: パス(Path)。パスが屋根の水平投影面になる。
 - パラメータ:
   - ``Slope``      実数  勾配(寸勾配、10 の水平に対する立ち上がり)
-  - ``BaseStart`` コントロールポイント  地廻り基準線の始点
-    (フィールド ``BaseStartX`` / ``BaseStartY``)
-  - ``BaseEnd``   コントロールポイント  地廻り基準線の終点
-    (フィールド ``BaseEndX`` / ``BaseEndY``)
+  - 1 個目のコントロールポイント  地廻り基準線の一端
+    (フィールド名は任意。座標は ``ControlPoint01X`` / ``ControlPoint01Y``)
+  - 2 個目のコントロールポイント  地廻り基準線の他端
+    (フィールド名は任意。座標は ``ControlPoint02X`` / ``ControlPoint02Y``)
   - ``Width``      実数  垂木幅 (mm)
   - ``Height``     実数  垂木成 (mm)
   - ``Spacing``    実数  垂木の間隔 (mm)
   - ``RafterClass`` 文字 垂木に割り当てる作図クラス名
 
 軒の出があると屋根の水平投影面の軒側の辺は軒先であって地廻りではないため、地廻り
-基準線はパスの辺ではなく **2 つのコントロールポイント(``BaseStart`` / ``BaseEnd``)で
-与える内蔵の直線**で指定する。垂木はこの直線に直交し、直線に沿って ``Spacing``
-間隔で並び、地廻りから棟側・軒先側の両方向へ屋根投影面までクリップして伸びる
-(高さ 0 の基準は地廻り線。軒の出側は負の高さ)。コントロールポイントが未設定
-(退化)なら、パスの最初の辺を地廻り基準線とみなすフォールバックで描く。
+基準線はパスの辺ではなく **2 つのコントロールポイントで与える内蔵の直線**で指定
+する。垂木はこの直線に直交し、直線に沿って ``Spacing`` 間隔で並び、地廻りから
+棟側・軒先側の両方向へ屋根投影面までクリップして伸びる(高さ 0 の基準は地廻り線。
+軒の出側は負の高さ)。棟/軒先の向きは自動判定するため、2 点の順序は問わない。
+コントロールポイントが未設定(2 点が一致)なら、パスの最初の辺を地廻り基準線と
+みなすフォールバックで描く。
 
-コントロールポイント座標(``GetRField`` の ``BaseStartX`` 等)とパス頂点
-(``GetPolylineVertex``)が同一座標系で読めることは VectorWorks 上で確認する。
+**コントロールポイントのフィールド名(``BaseStart`` 等)は座標の読み取りには
+使えない**。VectorWorks はコントロールポイントの「パラメータの名前(ユニバーサル
+名)」を ``ControlPoint01`` / ``ControlPoint02`` … と自動採番で固定し、座標は
+その名前 + ``X`` / ``Y`` (``ControlPoint01X`` 等)で ``GetRField`` から読む
+(作成順に 01, 02 が割り当たる)。この座標とパス頂点(``GetPolylineVertex``)が
+同一座標系で読めることは VectorWorks 上で確認する。
 """
 from __future__ import annotations
 
@@ -61,12 +66,14 @@ PARAM_WIDTH = 'Width'
 PARAM_HEIGHT = 'Height'
 PARAM_SPACING = 'Spacing'
 PARAM_CLASS = 'RafterClass'
-# 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイント
-# パラメータ名の末尾に X/Y を付けたフィールドで各座標を保持する。
-PARAM_BASE_START_X = 'BaseStartX'
-PARAM_BASE_START_Y = 'BaseStartY'
-PARAM_BASE_END_X = 'BaseEndX'
-PARAM_BASE_END_Y = 'BaseEndY'
+# 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイントの
+# ユニバーサル名を ControlPoint01/02... と自動採番で固定し(フィールド名を
+# 変えても座標の読み取りには使えない)、座標はその名前 + X/Y のフィールドで
+# 保持する。作成順に 01, 02 が割り当たる(この PIO では 2 点で地廻り線を成す)。
+PARAM_BASE_START_X = 'ControlPoint01X'
+PARAM_BASE_START_Y = 'ControlPoint01Y'
+PARAM_BASE_END_X = 'ControlPoint02X'
+PARAM_BASE_END_Y = 'ControlPoint02Y'
 
 # パラメータ未設定時の既定値。
 DEFAULT_SLOPE = 4.0          # 4 寸勾配
@@ -108,7 +115,8 @@ def _read_path_points(vs: Any, obj: Any) -> list[list[float]]:
 def _read_base_line(vs: Any, obj: Any) -> list[list[float]]:
     """地廻り基準線の 2 端点 [[x1, y1], [x2, y2]] をコントロールポイントから読む。
 
-    VectorWorks はコントロールポイントの座標をフィールド名末尾の X/Y で保持する。
+    VectorWorks はコントロールポイントの座標を、ユニバーサル名 ControlPoint01/02 の
+    末尾に X/Y を付けたフィールドで保持する(フィールド名ではなくこの名前で読む)。
     2 点が一致(未設定など)する場合でもそのまま返し、退化の扱い(パスの最初の辺へ
     のフォールバック)はジオメトリ計算フェーズに委ねる。
     """
