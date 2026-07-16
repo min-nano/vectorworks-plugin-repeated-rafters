@@ -92,7 +92,7 @@ class TestFreeBaseLine:
 
     def test_spans_both_directions_from_base_line(self) -> None:
         rafters = _build(RECT, base_line=self.BASE, spacing=2000.0)
-        # 基準線長 6000 / 間隔 2000 → x = 0,2000,4000,6000 の 4 本
+        # パス幅 6000 / 間隔 2000 → x = 0,2000,4000,6000 の 4 本
         assert len(rafters) == 4
         for r in rafters:
             # 始端=軒先側(y=0、軒の出の先)、終端=棟側(y=4000)
@@ -122,6 +122,26 @@ class TestFreeBaseLine:
         for r in forward + backward:
             assert r['start'][1] == pytest.approx(0.0)    # 軒先(低い)
             assert r['end'][1] == pytest.approx(4000.0)   # 棟(高い)
+
+    def test_short_base_line_extends_over_full_path(self) -> None:
+        # 基準線がパス幅より短くても、無限直線として延長しパス幅全域に並べる。
+        # 基準線は x=2000..4000 の中央 2000 幅だが、パスは x=0..6000。
+        short = [[2000.0, 1000.0], [4000.0, 1000.0]]
+        rafters = _build(RECT, base_line=short, spacing=2000.0)
+        # 始点(x=2000)を 0 とした ±2000 の倍数 → x = 0,2000,4000,6000 の 4 本
+        xs = sorted(r['start'][0] for r in rafters)
+        assert xs == pytest.approx([0.0, 2000.0, 4000.0, 6000.0])
+        # 基準線の 2 端点の間(x=2000..4000)に限らず両側へ延びている
+        assert min(xs) < 2000.0
+        assert max(xs) > 4000.0
+
+    def test_base_line_start_is_spacing_origin(self) -> None:
+        # 間隔の起点は基準線の始点(s=0)。始点が x=500 なら格子は 500 + k*2000。
+        offset = [[500.0, 1000.0], [3000.0, 1000.0]]
+        rafters = _build(RECT, base_line=offset, spacing=2000.0)
+        xs = sorted(r['start'][0] for r in rafters)
+        # 500 を 0 とした倍数のうち x=0..6000 に入るもの: 500,2500,4500
+        assert xs == pytest.approx([500.0, 2500.0, 4500.0])
 
     def test_base_line_not_parallel_to_edges(self) -> None:
         # 斜めの地廻り線でも直交方向に垂木が伸びる(退化しない)

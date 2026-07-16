@@ -11,6 +11,10 @@
   辺で制御せず独立に置けるようにしている(``base_line``)。
 - **基準線に直交**: 垂木は地廻り基準線に直交する向きで、基準線に沿って指定間隔で
   並ぶ。
+- **基準線は無限直線**: 垂木を並べる範囲は基準線の 2 端点の間に限らない。基準線を
+  無限に延長した直線とみなし、屋根の水平投影面(パス)を基準線方向へ射影した
+  広がりの全域に、始点を 0 とした指定間隔の位置で垂木を並べる。各垂木は下記の
+  とおり屋根投影面でクリップされる。
 - **面全体・両方向**: 各垂木は地廻り基準線から棟側(高い側)と軒先側(低い側)の
   **両方向**へ伸び、屋根水平投影面でクリップした長さになる。地廻りより軒先側
   (軒の出)は基準より下がる。
@@ -183,6 +187,22 @@ def _line_signed_intersections(
     return ts
 
 
+def _projection_range(
+    origin: Point, axis: Point, pts: list[Point],
+) -> tuple[float, float]:
+    """pts を origin 基準・axis(単位)方向へ射影した符号付き距離の [最小, 最大]。
+
+    地廻り基準線を無限直線とみなし、垂木を並べる範囲を屋根投影面(パス)の
+    広がりで決めるために使う。origin(基準線の始点)を 0 とした軸方向の座標で、
+    パス頂点が届く最小・最大位置を返す。
+    """
+    projs = [
+        (p[0] - origin[0]) * axis[0] + (p[1] - origin[1]) * axis[1]
+        for p in pts
+    ]
+    return min(projs), max(projs)
+
+
 def _choose_up_normal(
     mid: Point, left: Point, right: Point, pts: list[Point],
 ) -> Point:
@@ -242,8 +262,10 @@ def build_rafter_commands(
     Args:
         path: 屋根水平投影面の外形頂点列 [[x, y], ...](PIO のパス。閉ポリゴン)。
         base_line: 地廻り基準線の 2 端点 [[x1, y1], [x2, y2]](コントロール
-            ポイント)。垂木はこの直線に直交し、直線に沿って ``spacing`` 間隔で
-            並ぶ。``None`` や退化した線の場合はパスの最初の辺を基準辺に使う。
+            ポイント)。垂木はこの直線に直交し、直線を無限に延長した向きに沿って
+            ``spacing`` 間隔で並ぶ。並ぶ範囲は 2 端点の間ではなく、屋根投影面
+            (パス)を基準線方向へ射影した広がり全域。``None`` や退化した線の
+            場合はパスの最初の辺を基準辺に使う。
         slope: 寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。
         width: 垂木幅 (mm, 基準線方向の断面寸法)。
         height: 垂木成 (mm)。
@@ -281,11 +303,15 @@ def build_rafter_commands(
     member_id = make_member_id(width, height)
     commands: list[RafterCommand] = []
 
-    # 基準線に沿って 0, spacing, 2*spacing, ... の位置に垂木を並べる
-    # (両端を含む。base_len を超えない範囲)。
-    steps = int(math.floor(base_len / spacing + _EPS)) + 1
-    for k in range(steps):
-        s = min(k * spacing, base_len)
+    # 地廻り基準線を無限直線とみなし、垂木を並べる範囲は屋根投影面(パス)を
+    # 基準線方向へ射影した広がりで決める(基準線の 2 端点の間だけに限らない)。
+    # 基準線の始点(p1)を 0 とし、s = k*spacing (両向きの整数 k)の位置に並べる。
+    # 各位置の垂木は下の交点計算で屋根投影面によりクリップされる。
+    s_min, s_max = _projection_range(p1, (ex, ey), pts)
+    k_min = int(math.ceil(s_min / spacing - _EPS))
+    k_max = int(math.floor(s_max / spacing + _EPS))
+    for k in range(k_min, k_max + 1):
+        s = k * spacing
         origin = (p1[0] + ex * s, p1[1] + ey * s)
         if free_mode:
             # 棟側(正)・軒先側(負)の両方向へ屋根投影面までクリップする。
