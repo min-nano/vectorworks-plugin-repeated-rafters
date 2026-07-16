@@ -38,8 +38,10 @@ def _make_vs_mock(
     path_handle = object()
     non_null = object()
     vs_mock.Handle.return_value = null_handle
+    # GetCustomObjectInfo は (成否, オブジェクト名, オブジェクトハンドル,
+    # レコードハンドル, 壁ハンドル) の 5 値を返す。
     vs_mock.GetCustomObjectInfo.return_value = (
-        info_ok, obj_handle, object(), object())
+        info_ok, 'obj-name', obj_handle, object(), object())
     vs_mock.GetCustomObjectPath.return_value = path_handle
     vs_mock.GetVertNum.return_value = len(verts)
     vs_mock.GetPolylineVertex.side_effect = (

@@ -167,7 +167,9 @@ def run() -> None:
 
     from .vw import execute_document
 
-    ok, obj, _rec, _wall = vs.GetCustomObjectInfo()
+    # GetCustomObjectInfo は 5 値 (成否, オブジェクト名, オブジェクトハンドル,
+    # レコードハンドル, 壁ハンドル) を返す。オブジェクトハンドルは 3 番目。
+    ok, _name, obj, _rec, _wall = vs.GetCustomObjectInfo()
     if not ok or obj == vs.Handle(0):
         return
 
