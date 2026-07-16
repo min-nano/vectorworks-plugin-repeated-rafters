@@ -9,16 +9,14 @@ from vectorworks_plugin_repeated_rafters.rafters import build_document
 
 RECT = [[0.0, 0.0], [6000.0, 0.0], [6000.0, 4000.0], [0.0, 4000.0]]
 CLASS = '04構造-02木造-05小屋組-05垂木'
-# 軸組ツールからプロキシするパラメータの既定(統合テスト用)。
+# 軸組ツール(FramingMember)からプロキシするパラメータの既定(統合テスト用)。
 MEMBER_PARAMS: dict = {
-    'profile_shape': 'Rectangle',
-    'profile_series': 'AISC (Inch)',
-    'member_type': '2',
-    'structural_use': '1',
-    'axis_align': '1',
-    'start_condition': '3',
-    'end_condition': '3',
-    'material': '',
+    'config': 'SWB',
+    'bearing_inset': '52.5',
+    'eave_style': 'vertical',
+    'fascia_height': '60',
+    'vertical_reference': 'top',
+    'material': 'Wood',
 }
 
 
@@ -28,7 +26,7 @@ def _make_vs_mock() -> MagicMock:
     non_null = object()
     vs_mock.Handle.return_value = null_handle
     vs_mock.LNewObj.return_value = non_null
-    vs_mock.CreateCustomObjectPath.return_value = non_null
+    vs_mock.CreateCustomObject.return_value = non_null
     return vs_mock
 
 
@@ -55,4 +53,4 @@ def test_full_pipeline_draws_all_rafters() -> None:
         counts = vw.execute_document(doc)
 
     assert counts['rafters'] == len(doc['rafters']) == 7
-    assert vs_mock.CreateCustomObjectPath.call_count == 7
+    assert vs_mock.CreateCustomObject.call_count == 7

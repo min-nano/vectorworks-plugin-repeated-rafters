@@ -7,7 +7,7 @@
    屋根の水平投影面(PIO のパス)と各パラメータから、描くべき垂木を
    JSON 直列化可能な命令セットとして組み立てる。通常の Python 環境で検証できる。
 2. 描画フェーズ (``vw`` パッケージ, vs 依存)
-   命令セットに従って構造材ツール(軸組ツール)で垂木を描く。
+   命令セットに従って軸組ツール(FramingMember)で垂木を描く。
 
 このモジュールの ``run()`` は **PIO のオブジェクトスクリプト本体**で、VectorWorks が
 オブジェクトの再生成(リセット)のたびに呼び出す。オブジェクトのパス(=屋根の
@@ -31,22 +31,21 @@
   - ``Height``     実数  垂木成 (mm)
   - ``Spacing``    実数  垂木の間隔 (mm)
   - ``RafterClass`` 文字 垂木に割り当てる作図クラス名
-  - 軸組ツール(StructuralMember)から**プロキシ**するパラメータ(構造・断面の
-    要点のみ。ここで読み取った値をそのまま各垂木の同名レコードフィールドへ転送):
-    - ``ProfileShape``   文字 断面形状(既定 ``Rectangle``)
-    - ``ProfileSeries``  文字 断面シリーズ(既定 ``AISC (Inch)``)
-    - ``MemberType``     文字 部材タイプ(既定 ``2``)
-    - ``StructuralUse``  文字 構造用途(既定 ``1``)
-    - ``AxisAlign``      文字 軸の位置合わせ(既定 ``1``)
-    - ``StartCondition`` 文字 始端条件(既定 ``3``)
-    - ``EndCondition``   文字 終端条件(既定 ``3``)
-    - ``MemberMaterial`` 文字 部材材質(既定は空=無指定)
+  - 軸組ツール(FramingMember)から**プロキシ**するパラメータ(垂木の要点のみ。
+    ここで読み取った値をそのまま各垂木の同名レコードフィールドへ転送):
+    - ``config``            文字 部材構成(既定 ``SWB``)
+    - ``bearinginset``      文字 支持点の食い込み(既定 ``52.5``)
+    - ``eavestyle``         文字 軒先(鼻隠し)の形状(既定 ``vertical``)
+    - ``fasciaheight``      文字 鼻隠し成(既定 ``60``)
+    - ``verticalReference`` 文字 高さ基準(既定 ``top``)
+    - ``Material``          文字 材質(既定 ``Wood``)
 
 軒の出があると屋根の水平投影面の軒側の辺は軒先であって地廻りではないため、地廻り
 基準線はパスの辺ではなく **2 つのコントロールポイントで与える内蔵の直線**で指定
-する。垂木はこの直線に直交し、直線に沿って ``Spacing`` 間隔で並び、地廻りから
-棟側・軒先側の両方向へ屋根投影面までクリップして伸びる(高さ 0 の基準は地廻り線。
-軒の出側は負の高さ)。棟/軒先の向きは自動判定するため、2 点の順序は問わない。
+する。垂木はこの直線に直交し、直線に沿って ``Spacing`` 間隔で並び、屋根投影面
+(軒を含む面)でクリップされる。棟側が本体 ``span``、軒側のはみ出しが軒の出
+``overhang`` になり、軸組ツール(FramingMember)がこれらから立体を描く。棟/軒先の
+向きは自動判定するため、2 点の順序は問わない。
 コントロールポイントが未設定(2 点が一致)なら、パスの最初の辺を地廻り基準線と
 みなすフォールバックで描く。
 
@@ -76,18 +75,16 @@ PARAM_WIDTH = 'Width'
 PARAM_HEIGHT = 'Height'
 PARAM_SPACING = 'Spacing'
 PARAM_CLASS = 'RafterClass'
-# 軸組ツール(StructuralMember)で設定するパラメータのプロキシ。ここで読み取った
-# 値をそのまま各垂木(StructuralMember)の同名レコードフィールドへ転送する
-# (構造・断面の要点のみ。表示や Cover 等は VectorWorks の既定に委ねる)。
+# 軸組ツール(FramingMember)で設定するパラメータのプロキシ。ここで読み取った
+# 値をそのまま各垂木(FramingMember)の同名レコードフィールドへ転送する
+# (垂木の要点のみ。断面形状の各種オプション等は VectorWorks の既定に委ねる)。
 # PIO のパラメータ(レコードフィールド)名は転送先と同名にして対応を明確にする。
-PARAM_PROFILE_SHAPE = 'ProfileShape'
-PARAM_PROFILE_SERIES = 'ProfileSeries'
-PARAM_MEMBER_TYPE = 'MemberType'
-PARAM_STRUCTURAL_USE = 'StructuralUse'
-PARAM_AXIS_ALIGN = 'AxisAlign'
-PARAM_START_CONDITION = 'StartCondition'
-PARAM_END_CONDITION = 'EndCondition'
-PARAM_MATERIAL = 'MemberMaterial'
+PARAM_CONFIG = 'config'
+PARAM_BEARING_INSET = 'bearinginset'
+PARAM_EAVE_STYLE = 'eavestyle'
+PARAM_FASCIA_HEIGHT = 'fasciaheight'
+PARAM_VERTICAL_REFERENCE = 'verticalReference'
+PARAM_MATERIAL = 'Material'
 # 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイントの
 # ユニバーサル名を ControlPoint01/02... と自動採番で固定し(フィールド名を
 # 変えても座標の読み取りには使えない)、座標はその名前 + X/Y のフィールドで
@@ -103,15 +100,14 @@ DEFAULT_WIDTH = 45.0         # 垂木幅 45mm
 DEFAULT_HEIGHT = 60.0        # 垂木成 60mm
 DEFAULT_SPACING = 455.0      # 1.5 尺 ≒ 455mm
 DEFAULT_CLASS = '04構造-02木造-05小屋組-05垂木'
-# 軸組ツールからプロキシするパラメータの既定値(空欄時に使う)。
-DEFAULT_PROFILE_SHAPE = 'Rectangle'    # 矩形断面
-DEFAULT_PROFILE_SERIES = 'AISC (Inch)'
-DEFAULT_MEMBER_TYPE = '2'
-DEFAULT_STRUCTURAL_USE = '1'
-DEFAULT_AXIS_ALIGN = '1'
-DEFAULT_START_CONDITION = '3'
-DEFAULT_END_CONDITION = '3'
-DEFAULT_MATERIAL = ''                  # 無指定(材質を割り当てない)
+# 軸組ツール(FramingMember)からプロキシするパラメータの既定値(空欄時に使う)。
+# 値はエクスポート(実オブジェクト)の rafter 設定に準拠する。
+DEFAULT_CONFIG = 'SWB'                  # 部材構成
+DEFAULT_BEARING_INSET = '52.5'         # 支持点の食い込み (mm)
+DEFAULT_EAVE_STYLE = 'vertical'        # 軒先(鼻隠し)の形状
+DEFAULT_FASCIA_HEIGHT = '60'           # 鼻隠し成 (mm)
+DEFAULT_VERTICAL_REFERENCE = 'top'     # 高さ基準
+DEFAULT_MATERIAL = 'Wood'              # 材質
 
 
 def _to_float(value: Any, default: float) -> float:
@@ -127,7 +123,7 @@ def _to_float(value: Any, default: float) -> float:
 def _read_str(vs: Any, obj: Any, field: str, default: str) -> str:
     """vs のパラメータ値を文字列で読む(空欄は default)。
 
-    軸組ツール(StructuralMember)からプロキシする文字列パラメータを読むために
+    軸組ツール(FramingMember)からプロキシする文字列パラメータを読むために
     使う。``GetRField`` は未設定/空欄で ``''`` を返すため、その場合は既定値に
     落とす(明示的に空にしたい ``MemberMaterial`` は既定が ``''`` なので影響なし)。
     """
@@ -192,21 +188,16 @@ def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
         'spacing': _to_float(
             vs.GetRField(obj, PLUGIN_NAME, PARAM_SPACING), DEFAULT_SPACING),
         'rafter_class': rafter_class,
-        # 軸組ツール(StructuralMember)からプロキシするパラメータ。
-        'profile_shape': _read_str(
-            vs, obj, PARAM_PROFILE_SHAPE, DEFAULT_PROFILE_SHAPE),
-        'profile_series': _read_str(
-            vs, obj, PARAM_PROFILE_SERIES, DEFAULT_PROFILE_SERIES),
-        'member_type': _read_str(
-            vs, obj, PARAM_MEMBER_TYPE, DEFAULT_MEMBER_TYPE),
-        'structural_use': _read_str(
-            vs, obj, PARAM_STRUCTURAL_USE, DEFAULT_STRUCTURAL_USE),
-        'axis_align': _read_str(
-            vs, obj, PARAM_AXIS_ALIGN, DEFAULT_AXIS_ALIGN),
-        'start_condition': _read_str(
-            vs, obj, PARAM_START_CONDITION, DEFAULT_START_CONDITION),
-        'end_condition': _read_str(
-            vs, obj, PARAM_END_CONDITION, DEFAULT_END_CONDITION),
+        # 軸組ツール(FramingMember)からプロキシするパラメータ。
+        'config': _read_str(vs, obj, PARAM_CONFIG, DEFAULT_CONFIG),
+        'bearing_inset': _read_str(
+            vs, obj, PARAM_BEARING_INSET, DEFAULT_BEARING_INSET),
+        'eave_style': _read_str(
+            vs, obj, PARAM_EAVE_STYLE, DEFAULT_EAVE_STYLE),
+        'fascia_height': _read_str(
+            vs, obj, PARAM_FASCIA_HEIGHT, DEFAULT_FASCIA_HEIGHT),
+        'vertical_reference': _read_str(
+            vs, obj, PARAM_VERTICAL_REFERENCE, DEFAULT_VERTICAL_REFERENCE),
         'material': _read_str(vs, obj, PARAM_MATERIAL, DEFAULT_MATERIAL),
     }
 
@@ -217,7 +208,7 @@ def run() -> None:
     VectorWorks がオブジェクトの再生成(リセット)のたびに呼び出す。オブジェクトの
     パス(屋根の水平投影面)とパラメータを読み取り、ジオメトリ計算フェーズで垂木
     命令を組み立て、JSON を経由して直列化可能性を保証してから、描画フェーズで
-    構造材ツールにより垂木を描く。
+    軸組ツール(FramingMember)により垂木を描く。
     """
     # vs に依存するモジュールは VectorWorks 上での実行時のみ読み込む
     # (これにより rafters パッケージ = 計算フェーズは通常の Python でも使える)。
