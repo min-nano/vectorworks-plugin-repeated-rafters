@@ -89,7 +89,7 @@ pyproject.toml               # パッケージメタデータ
 
 ## VectorWorks へのプラグイン登録（名前・パラメータの一致）
 
-`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`繰り返し垂木`、`PARAM_SLOPE`/`PARAM_BASE_EDGE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS`）。登録手順・パラメータ表は `README.md` を参照。
+`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_BASE_EDGE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS`）。登録手順・パラメータ表は `README.md` を参照。
 
 ## 開発プロセス: PR 作成と監視
 
