@@ -16,7 +16,9 @@
 
 ## インストール
 
-このリポジトリをクローンまたはダウンロードし、リポジトリのルートで以下を実行して、パッケージを VectorWorks の Python Externals フォルダにインストールします。実行時の依存ライブラリはありません。
+後述の `main.py` を PIO のスクリプトとして登録すれば、**初回リセット時に自動的にインストールされ、以降はリセットのたびに GitHub の `main` ブランチの最新版へ自動更新される**ため、手動インストールは任意です（本体は実行時依存ライブラリを持たない純 Python で、更新はアーカイブの直接展開で行うため pip も不要です）。
+
+オフライン環境などで手動インストールする場合は、このリポジトリをクローンまたはダウンロードし、リポジトリのルートで以下を実行します。
 
 **macOS**
 ```bash
@@ -32,7 +34,11 @@ pip install --target "%APPDATA%\Nemetschek\Vectorworks\2025\Python Externals" .
 
 Python Externals フォルダは VectorWorks が自動的に `sys.path` に追加するため、インストール後は追加の設定なしにパッケージを参照できます。
 
-> **`ModuleNotFoundError: No module named 'vectorworks_plugin_repeated_rafters'` が出る場合**: 実行中の VectorWorks のバージョンの Python Externals フォルダにパッケージが入っていません（別バージョンのフォルダに入れた／未インストール）。上記コマンドのバージョン番号を実行中の VW に合わせて入れ直してください。なお import 名（`vectorworks_plugin_repeated_rafters`、アンダースコア区切り）はリポジトリ名（`vectorworks-plugin-repeated-rafters`、ハイフン区切り）と綴りが異なりますが、これは Python の仕様どおりで正しく、`main.py` もこの import 名を使っています。
+### 自動インストール・更新について
+
+登録した `main.py` は、リセットのたびに GitHub の `main` ブランチの最新コミットを確認し、インストール済みのコミットと異なれば Python Externals フォルダへ自動的に更新インストールしてから本体を実行します（更新後は VectorWorks を再起動しなくても次のリセットから新しいコードが使われます）。インターネットに接続できない場合はインストール済みのバージョンをそのまま実行します。特定バージョンに固定したい等で自動更新を止めたい場合は、`main.py` を本体を import して `run()` を呼ぶだけの単純なスクリプトに差し替えてください。
+
+> **`ModuleNotFoundError: No module named 'vectorworks_plugin_repeated_rafters'` が出る場合**: 自動インストールに失敗（オフライン等）し、かつ手動インストールもされていない可能性があります。ネットワーク接続を確認するか、上記コマンドで実行中の VectorWorks のバージョンの Python Externals フォルダへ手動インストールしてください（別バージョンのフォルダに入れると読み込まれません）。なお import 名（`vectorworks_plugin_repeated_rafters`、アンダースコア区切り）はリポジトリ名（`vectorworks-plugin-repeated-rafters`、ハイフン区切り）と綴りが異なりますが、これは Python の仕様どおりで正しく、`main.py` もこの import 名を使っています。
 
 ## VectorWorks へのプラグイン登録
 

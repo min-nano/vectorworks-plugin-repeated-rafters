@@ -60,7 +60,14 @@ pyproject.toml               # パッケージメタデータ
 
 このスクリプトは単独の Python プログラムとして動作しない。**VectorWorks 内でパス PIO のオブジェクトスクリプトとして実行する必要がある**。`vs` モジュールは VectorWorks 独自の Python スクリプト API であり、pip でインストールできない。テストは VectorWorks 公式 `vs.py` スタブをモック対象として `pytest` で実行する（`.github/workflows/test.yml` 参照）。
 
-**PIO はオブジェクト再生成（リセット）のたびに実行される**ため、`main.py` は姉妹プロジェクトのようなネットワーク経由の自動更新を行わず、インストール済みパッケージを読み込んで `run()` を呼ぶだけにしている（更新は `pip install --upgrade` で明示的に行う）。
+`main.py` は姉妹プロジェクト **vectorworks-plugin-rebar** と同じく、実行（PIO のリセット）のたびに GitHub の `main` ブランチの最新コミット SHA を確認し、インストール済みと異なれば Python Externals フォルダへ更新インストールしてから `run()` を呼ぶ（未インストールなら新規インストール）。ただし**本体は実行時依存ライブラリを持たない純 Python** なので、rebar のように pip で依存ライブラリを揃える機構は持たず、tarball を直接展開して本体パッケージを入れ替えるだけにしている（VectorWorks 同梱 Python では pip を実行できない場合があるため pip 非依存）。
+
+- 最新コミットは git smart HTTP の参照広告（`.../info/refs?service=git-upload-pack`）から取得し、REST API のレートリミットを避ける。
+- SHA 一致で最新判定する（`main` は常にテスト済みのためバージョン番号は使わない）。インストール元 SHA は dist-info の `direct_url.json`（PEP 610）に記録し、pip インストールと同じ方法で読む。
+- 更新後は `sys.modules` の本体モジュールを破棄し、`sys.path` の先頭に Python Externals を置くので、VectorWorks を再起動せずとも次のリセットから新コードが使われる。
+- オフライン等で確認・取得に失敗しても、更新をスキップしてインストール済みを実行する（更新失敗が本体実行を妨げない）。import 失敗時は `_repair_install()` で入れ直しを試み、それでも失敗した場合のみ `vs.AlrtDialog` で理由を表示する。
+
+**PIO はオブジェクト再生成（リセット）のたびに実行される**点に注意（リセットは図形の移動・編集のたびに起きる）。開発初期は毎リセットで更新確認する方針だが、将来は更新確認を VectorWorks セッション内の初回だけに絞る余地がある（rebar のロードマップと同様）。
 
 ## 処理フロー
 
