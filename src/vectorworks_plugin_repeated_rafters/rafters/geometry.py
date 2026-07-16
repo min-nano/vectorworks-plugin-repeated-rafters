@@ -268,6 +268,7 @@ def build_rafter_commands(
     fascia_height: str,
     vertical_reference: str,
     material: str,
+    display_2d: str,
 ) -> list[RafterCommand]:
     """屋根水平投影面と各パラメータから垂木命令のリストを組み立てる。
 
@@ -290,9 +291,9 @@ def build_rafter_commands(
         width: 垂木幅 (mm, 基準線方向の断面寸法)。
         height: 垂木成 (mm)。
         spacing: 垂木の間隔 (mm, 基準線に沿った配置間隔)。
-        rafter_class: 各垂木に割り当てる作図クラス名。
+        rafter_class: 各垂木に割り当てる作図クラス名(PIO オブジェクト自身のクラス)。
         config: 軸組ツールからプロキシする部材構成 (FramingMember の ``config``)。
-            以下 5 つと共に、ジオメトリ計算はこれらを解釈せず各命令へそのまま
+            以下 6 つと共に、ジオメトリ計算はこれらを解釈せず各命令へそのまま
             載せ、描画フェーズが対応する FramingMember レコードフィールドへ
             転送する(垂木の要点のみ)。
         bearing_inset: 支持点の食い込み (``bearinginset``)。
@@ -300,6 +301,8 @@ def build_rafter_commands(
         fascia_height: 鼻隠し成 (``fasciaheight``)。
         vertical_reference: 高さ基準 (``verticalReference``)。
         material: 材質 (``Material``)。
+        display_2d: 2D 表現 (``2DDisplay``。実線/中心線/幅/中心線と幅/面なし =
+            solid/center/width/widthcenter/none)。
 
     Returns:
         垂木命令のリスト。頂点が 3 点未満・基準線が退化・間隔が 0 以下など
@@ -386,5 +389,6 @@ def build_rafter_commands(
             'fascia_height': fascia_height,
             'vertical_reference': vertical_reference,
             'material': material,
+            'display_2d': display_2d,
         })
     return commands

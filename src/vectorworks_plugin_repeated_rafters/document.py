@@ -15,13 +15,14 @@
 線)を原点(データム)とし、そこから棟側へ ``span`` の水平長で本体を、軒側へ ``overhang``
 の水平長で軒の出を描く。傾きは ``pitch``(勾配角)で与える。
 
-スキーマ (version 2):
+スキーマ (version 3):
 
     {
-        "version": 2,
+        "version": 3,
         "rafters": [
             {
                 # 垂木 1 本を軸組ツール(FramingMember, type='rafter')で描く命令。
+                # class は PIO オブジェクト自身のクラス(垂木もこのクラスに置く)。
                 "class": "04構造-02木造-05小屋組-05垂木",  # 割り当てるクラス名
                 "label": "45×60@455",       # 表示ラベル (FramingMember の labelText)
                 # origin は地廻り基準線上の配置点(平面, PIO ローカル座標 mm)。
@@ -44,7 +45,8 @@
                 "eave_style": "vertical",    # 軒先(鼻隠し)の形状 (eavestyle)
                 "fascia_height": "60",       # 鼻隠し成 (fasciaheight)
                 "vertical_reference": "top", # 高さ基準 (verticalReference)
-                "material": "Wood"           # 材質 (Material)
+                "material": "Wood",          # 材質 (Material)
+                "display_2d": "width"        # 2D 表現 (2DDisplay)
             }
         ]
     }
@@ -54,7 +56,7 @@ from __future__ import annotations
 import json
 from typing import Any, TypedDict
 
-DOCUMENT_VERSION = 2
+DOCUMENT_VERSION = 3
 
 # 軸組ツール(FramingMember)からプロキシする文字列フィールド。命令セットの
 # キー名を FramingMember のレコードフィールド名へ対応付ける。描画フェーズは
@@ -66,6 +68,9 @@ MEMBER_FIELD_MAP: dict[str, str] = {
     'fascia_height': 'fasciaheight',
     'vertical_reference': 'verticalReference',
     'material': 'Material',
+    # 2D 表現(実線/中心線/幅/中心線と幅/面なし = solid/center/width/
+    # widthcenter/none)を切り替える FramingMember のフィールド。
+    'display_2d': '2DDisplay',
 }
 
 
@@ -87,13 +92,14 @@ RafterCommand = TypedDict('RafterCommand', {
     'fascia_height': str,
     'vertical_reference': str,
     'material': str,
+    'display_2d': str,
 })
 """垂木 1 本を軸組ツール(FramingMember, type='rafter')で描画する命令。
 
 origin は地廻り基準線上の配置点(平面, 高さ 0 のデータム)。angle は棟方向の平面回転
 (度)。span は地廻り→棟の水平長(本体)、overhang は地廻り→軒先の水平長(軒の出, >=0)。
-pitch は勾配角(度)。width/height は断面。class は割り当てる構造クラス名、label は
-"{幅}×{成}@{間隔}" 形式の表示ラベル。
+pitch は勾配角(度)。width/height は断面。class は割り当てるクラス名(PIO オブジェクト
+自身のクラス)、label は "{幅}×{成}@{間隔}" 形式の表示ラベル。
 
 config 以降は「軸組ツール(FramingMember)で設定するパラメータ」を PIO パラメータ
 として公開し、描画フェーズへプロキシ(そのまま転送)する値。描画フェーズは

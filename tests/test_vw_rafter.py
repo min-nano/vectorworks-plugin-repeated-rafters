@@ -25,6 +25,7 @@ def make_rafter_command(
     fascia_height: str = '60',
     vertical_reference: str = 'top',
     material: str = 'Wood',
+    display_2d: str = 'width',
 ) -> RafterCommand:
     return {
         'class': rafter_class,
@@ -42,6 +43,7 @@ def make_rafter_command(
         'fascia_height': fascia_height,
         'vertical_reference': vertical_reference,
         'material': material,
+        'display_2d': display_2d,
     }
 
 
@@ -146,7 +148,7 @@ class TestExecuteRafters:
             make_rafter_command(
                 config='DWB', bearing_inset='60', eave_style='square',
                 fascia_height='45', vertical_reference='bottom',
-                material='木製 SPF 軸組 MT'),
+                material='木製 SPF 軸組 MT', display_2d='widthcenter'),
         ])
         rfields = {(c.args[2], c.args[3]) for c in vs_mock.SetRField.call_args_list}
         assert ('config', 'DWB') in rfields
@@ -155,6 +157,7 @@ class TestExecuteRafters:
         assert ('fasciaheight', '45') in rfields
         assert ('verticalReference', 'bottom') in rfields
         assert ('Material', '木製 SPF 軸組 MT') in rfields
+        assert ('2DDisplay', 'widthcenter') in rfields
 
     def test_fallback_to_line_when_plugin_unavailable(self) -> None:
         """軸組ツールが使えない場合は通常線にフォールバックする。"""

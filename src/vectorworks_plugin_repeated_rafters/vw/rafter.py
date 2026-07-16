@@ -75,6 +75,8 @@ def draw_rafter(command: RafterCommand) -> Any:
         vs.SetRField(
             obj, PLUGIN_NAME, 'verticalReference', command['vertical_reference'])
         vs.SetRField(obj, PLUGIN_NAME, 'Material', command['material'])
+        # 2D 表現(実線/中心線/幅/中心線と幅/面なし)。
+        vs.SetRField(obj, PLUGIN_NAME, '2DDisplay', command['display_2d'])
         vs.ResetObject(obj)
         return obj
     # フォールバック: 通常の直線(水平投影)。軒先(-overhang)から棟(+span)まで。

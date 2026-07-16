@@ -25,6 +25,7 @@ MEMBER_PARAMS: dict = {
     'fascia_height': '60',
     'vertical_reference': 'top',
     'material': 'Wood',
+    'display_2d': 'width',
 }
 
 
@@ -198,15 +199,17 @@ class TestBuildDocument:
         doc = build_document(
             RECT, base_line=None, slope=4.0, width=45.0, height=60.0,
             spacing=2000.0, rafter_class=CLASS, **MEMBER_PARAMS)
-        assert doc['version'] == 2
+        assert doc['version'] == 3
         assert len(doc['rafters']) == 4
 
     def test_proxied_member_params_on_each_command(self) -> None:
         doc = build_document(
             RECT, base_line=None, slope=4.0, width=45.0, height=60.0,
             spacing=2000.0, rafter_class=CLASS,
-            **{**MEMBER_PARAMS, 'config': 'DWB', 'material': 'SPF'})
+            **{**MEMBER_PARAMS, 'config': 'DWB', 'material': 'SPF',
+               'display_2d': 'widthcenter'})
         assert doc['rafters']
         for rafter in doc['rafters']:
             assert rafter['config'] == 'DWB'
             assert rafter['material'] == 'SPF'
+            assert rafter['display_2d'] == 'widthcenter'

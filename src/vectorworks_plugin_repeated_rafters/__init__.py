@@ -30,7 +30,6 @@
   - ``Width``      実数  垂木幅 (mm)
   - ``Height``     実数  垂木成 (mm)
   - ``Spacing``    実数  垂木の間隔 (mm)
-  - ``RafterClass`` 文字 垂木に割り当てる作図クラス名
   - 軸組ツール(FramingMember)から**プロキシ**するパラメータ(垂木の要点のみ。
     ここで読み取った値をそのまま各垂木の同名レコードフィールドへ転送):
     - ``config``            文字 部材構成(既定 ``SWB``)
@@ -39,6 +38,12 @@
     - ``fasciaheight``      文字 鼻隠し成(既定 ``60``)
     - ``verticalReference`` 文字 高さ基準(既定 ``top``)
     - ``Material``          文字 材質(既定 ``Wood``)
+    - ``2DDisplay``         文字 2D 表現(実線/中心線/幅/中心線と幅/面なし =
+                            ``solid``/``center``/``width``/``widthcenter``/``none``。
+                            既定 ``width`` = 幅)
+
+垂木に割り当てる**クラスは PIO オブジェクト自身のクラス**を使う(``vs.GetClass`` で
+読む)。専用のクラスパラメータは持たせない。
 
 軒の出があると屋根の水平投影面の軒側の辺は軒先であって地廻りではないため、地廻り
 基準線はパスの辺ではなく **2 つのコントロールポイントで与える内蔵の直線**で指定
@@ -74,7 +79,8 @@ PARAM_SLOPE = 'Slope'
 PARAM_WIDTH = 'Width'
 PARAM_HEIGHT = 'Height'
 PARAM_SPACING = 'Spacing'
-PARAM_CLASS = 'RafterClass'
+# 垂木のクラスは PIO オブジェクト自身のクラス(``vs.GetClass``)を使うため、専用の
+# クラスパラメータは持たない。
 # 軸組ツール(FramingMember)で設定するパラメータのプロキシ。ここで読み取った
 # 値をそのまま各垂木(FramingMember)の同名レコードフィールドへ転送する
 # (垂木の要点のみ。断面形状の各種オプション等は VectorWorks の既定に委ねる)。
@@ -85,6 +91,9 @@ PARAM_EAVE_STYLE = 'eavestyle'
 PARAM_FASCIA_HEIGHT = 'fasciaheight'
 PARAM_VERTICAL_REFERENCE = 'verticalReference'
 PARAM_MATERIAL = 'Material'
+# 2D 表現(実線/中心線/幅/中心線と幅/面なし = solid/center/width/widthcenter/
+# none)。FramingMember の ``2DDisplay`` フィールドへプロキシする。
+PARAM_2D_DISPLAY = '2DDisplay'
 # 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイントの
 # ユニバーサル名を ControlPoint01/02... と自動採番で固定し(フィールド名を
 # 変えても座標の読み取りには使えない)、座標はその名前 + X/Y のフィールドで
@@ -99,7 +108,9 @@ DEFAULT_SLOPE = 4.0          # 4 寸勾配
 DEFAULT_WIDTH = 45.0         # 垂木幅 45mm
 DEFAULT_HEIGHT = 60.0        # 垂木成 60mm
 DEFAULT_SPACING = 455.0      # 1.5 尺 ≒ 455mm
-DEFAULT_CLASS = '04構造-02木造-05小屋組-05垂木'
+# PIO オブジェクトのクラスが空(未設定)だった場合のフォールバッククラス名。
+# 通常は配置済み PIO のクラス(``vs.GetClass``)がそのまま使われる。
+DEFAULT_CLASS = '一般'
 # 軸組ツール(FramingMember)からプロキシするパラメータの既定値(空欄時に使う)。
 # 値はエクスポート(実オブジェクト)の rafter 設定に準拠する。
 DEFAULT_CONFIG = 'SWB'                  # 部材構成
@@ -108,6 +119,7 @@ DEFAULT_EAVE_STYLE = 'vertical'        # 軒先(鼻隠し)の形状
 DEFAULT_FASCIA_HEIGHT = '60'           # 鼻隠し成 (mm)
 DEFAULT_VERTICAL_REFERENCE = 'top'     # 高さ基準
 DEFAULT_MATERIAL = 'Wood'              # 材質
+DEFAULT_2D_DISPLAY = 'width'           # 2D 表現(幅)
 
 
 def _to_float(value: Any, default: float) -> float:
@@ -173,8 +185,12 @@ def _read_base_line(vs: Any, obj: Any) -> list[list[float]]:
 
 
 def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
-    """PIO のパラメータ(勾配・地廻り基準線・断面・間隔・クラス)を読み取る。"""
-    rafter_class = vs.GetRField(obj, PLUGIN_NAME, PARAM_CLASS)
+    """PIO のパラメータ(勾配・地廻り基準線・断面・間隔・2D 表現)を読み取る。
+
+    垂木のクラスは専用パラメータではなく **PIO オブジェクト自身のクラス**
+    (``vs.GetClass``)を使う。クラスが空(未設定)なら ``DEFAULT_CLASS`` に落とす。
+    """
+    rafter_class = vs.GetClass(obj)
     if not rafter_class:
         rafter_class = DEFAULT_CLASS
     return {
@@ -187,7 +203,7 @@ def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
             vs.GetRField(obj, PLUGIN_NAME, PARAM_HEIGHT), DEFAULT_HEIGHT),
         'spacing': _to_float(
             vs.GetRField(obj, PLUGIN_NAME, PARAM_SPACING), DEFAULT_SPACING),
-        'rafter_class': rafter_class,
+        'rafter_class': str(rafter_class),
         # 軸組ツール(FramingMember)からプロキシするパラメータ。
         'config': _read_str(vs, obj, PARAM_CONFIG, DEFAULT_CONFIG),
         'bearing_inset': _read_str(
@@ -199,6 +215,8 @@ def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
         'vertical_reference': _read_str(
             vs, obj, PARAM_VERTICAL_REFERENCE, DEFAULT_VERTICAL_REFERENCE),
         'material': _read_str(vs, obj, PARAM_MATERIAL, DEFAULT_MATERIAL),
+        'display_2d': _read_str(
+            vs, obj, PARAM_2D_DISPLAY, DEFAULT_2D_DISPLAY),
     }
 
 

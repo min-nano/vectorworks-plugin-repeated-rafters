@@ -17,6 +17,7 @@ MEMBER_PARAMS: dict = {
     'fascia_height': '60',
     'vertical_reference': 'top',
     'material': 'Wood',
+    'display_2d': 'width',
 }
 
 

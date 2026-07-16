@@ -27,6 +27,7 @@ def build_document(
     fascia_height: str,
     vertical_reference: str,
     material: str,
+    display_2d: str,
 ) -> Document:
     """屋根水平投影面と各パラメータから JSON 命令セットを組み立てて返す。
 
@@ -39,14 +40,16 @@ def build_document(
         width: 垂木幅 (mm)。
         height: 垂木成 (mm)。
         spacing: 垂木の間隔 (mm)。
-        rafter_class: 各垂木に割り当てる作図クラス名。
+        rafter_class: 各垂木に割り当てる作図クラス名(PIO オブジェクト自身のクラス)。
         config: 軸組ツール(FramingMember)からプロキシする部材構成 (``config``)。
-            以下 5 つと共に描画フェーズへそのまま転送する(垂木の要点のみ)。
+            以下 6 つと共に描画フェーズへそのまま転送する(垂木の要点のみ)。
         bearing_inset: 支持点の食い込み (``bearinginset``)。
         eave_style: 軒先(鼻隠し)の形状 (``eavestyle``)。
         fascia_height: 鼻隠し成 (``fasciaheight``)。
         vertical_reference: 高さ基準 (``verticalReference``)。
         material: 材質 (``Material``)。
+        display_2d: 2D 表現 (``2DDisplay``。実線/中心線/幅/中心線と幅/面なし =
+            solid/center/width/widthcenter/none)。
     """
     return {
         'version': DOCUMENT_VERSION,
@@ -64,5 +67,6 @@ def build_document(
             fascia_height=fascia_height,
             vertical_reference=vertical_reference,
             material=material,
+            display_2d=display_2d,
         ),
     }

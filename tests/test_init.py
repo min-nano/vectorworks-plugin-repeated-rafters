@@ -15,6 +15,7 @@ def _make_vs_mock(
     info_ok: bool = True,
     params: dict[str, str] | None = None,
     vertices: list[tuple[float, float]] | None = None,
+    obj_class: str = 'PIOクラス',
 ) -> MagicMock:
     verts = RECT if vertices is None else vertices
     values = {
@@ -22,7 +23,6 @@ def _make_vs_mock(
         'Width': '45',
         'Height': '60',
         'Spacing': '2000',
-        'RafterClass': '',
         # コントロールポイント既定は未設定(0,0)→退化→最初の辺へフォールバック
         'ControlPoint01X': '',
         'ControlPoint01Y': '',
@@ -48,6 +48,8 @@ def _make_vs_mock(
         lambda h, i: (verts[i - 1], 0, 0.0))
     vs_mock.GetRField.side_effect = (
         lambda obj, plugin, field: values.get(field, ''))
+    # 垂木のクラスは PIO オブジェクト自身のクラス(GetClass)を使う。
+    vs_mock.GetClass.return_value = obj_class
     vs_mock.LNewObj.return_value = non_null
     vs_mock.CreateCustomObject.return_value = non_null
     return vs_mock
@@ -65,10 +67,11 @@ class TestReadHelpers:
         vs_mock.GetCustomObjectPath.return_value = vs_mock.Handle.return_value
         assert pkg._read_path_points(vs_mock, object()) == []
 
-    def test_read_parameters_uses_defaults_for_blank_class(self) -> None:
-        vs_mock = _make_vs_mock(params={'RafterClass': ''})
+    def test_read_parameters_defaults(self) -> None:
+        vs_mock = _make_vs_mock(obj_class='PIOクラス')
         params = pkg._read_parameters(vs_mock, object())
-        assert params['rafter_class'] == pkg.DEFAULT_CLASS
+        # 垂木のクラスは PIO オブジェクト自身のクラス(GetClass)。
+        assert params['rafter_class'] == 'PIOクラス'
         # コントロールポイント未設定 → (0,0)-(0,0)。退化の扱いは計算フェーズへ委ねる
         assert params['base_line'] == [[0.0, 0.0], [0.0, 0.0]]
         assert params['slope'] == 4.0
@@ -82,12 +85,20 @@ class TestReadHelpers:
         assert params['fascia_height'] == pkg.DEFAULT_FASCIA_HEIGHT
         assert params['vertical_reference'] == pkg.DEFAULT_VERTICAL_REFERENCE
         assert params['material'] == pkg.DEFAULT_MATERIAL
+        # 2D 表現は空欄のとき既定値(幅)に落ちる。
+        assert params['display_2d'] == pkg.DEFAULT_2D_DISPLAY
+
+    def test_read_parameters_blank_class_falls_back(self) -> None:
+        # PIO のクラスが空なら DEFAULT_CLASS に落とす(検証が非空を要求するため)。
+        vs_mock = _make_vs_mock(obj_class='')
+        params = pkg._read_parameters(vs_mock, object())
+        assert params['rafter_class'] == pkg.DEFAULT_CLASS
 
     def test_read_parameters_proxies_member_settings(self) -> None:
         vs_mock = _make_vs_mock(params={
             'config': 'DWB', 'bearinginset': '60', 'eavestyle': 'square',
             'fasciaheight': '45', 'verticalReference': 'bottom',
-            'Material': '木製 SPF 軸組 MT',
+            'Material': '木製 SPF 軸組 MT', '2DDisplay': 'widthcenter',
         })
         params = pkg._read_parameters(vs_mock, object())
         assert params['config'] == 'DWB'
@@ -96,9 +107,10 @@ class TestReadHelpers:
         assert params['fascia_height'] == '45'
         assert params['vertical_reference'] == 'bottom'
         assert params['material'] == '木製 SPF 軸組 MT'
+        assert params['display_2d'] == 'widthcenter'
 
-    def test_read_parameters_custom_class(self) -> None:
-        vs_mock = _make_vs_mock(params={'RafterClass': '垂木クラス'})
+    def test_read_parameters_uses_pio_object_class(self) -> None:
+        vs_mock = _make_vs_mock(obj_class='垂木クラス')
         params = pkg._read_parameters(vs_mock, object())
         assert params['rafter_class'] == '垂木クラス'
 
@@ -153,6 +165,23 @@ class TestRun:
             if c.args[2] == 'overhang'
         ]
         assert any(float(v) > 0 for v in overhangs)
+
+    def test_run_uses_pio_object_class(self) -> None:
+        # 垂木は PIO オブジェクト自身のクラス(GetClass)に置かれる。
+        vs_mock = _make_vs_mock(params={'Spacing': '2000'}, obj_class='屋根-垂木')
+        _run(vs_mock)
+        class_args = [c.args[1] for c in vs_mock.SetClass.call_args_list]
+        assert class_args and all(c == '屋根-垂木' for c in class_args)
+
+    def test_run_proxies_2d_display(self) -> None:
+        vs_mock = _make_vs_mock(params={
+            'Spacing': '2000', '2DDisplay': 'widthcenter'})
+        _run(vs_mock)
+        displays = [
+            c.args[3] for c in vs_mock.SetRField.call_args_list
+            if c.args[2] == '2DDisplay'
+        ]
+        assert displays and all(v == 'widthcenter' for v in displays)
 
     def test_run_returns_early_when_info_not_ok(self) -> None:
         vs_mock = _make_vs_mock(info_ok=False)
