@@ -17,7 +17,7 @@ __all__ = ['execute_document', 'execute_rafters']
 def execute_document(document: Any) -> dict[str, int]:
     """命令セットを検証し、垂木を描画して実行数を返す。
 
-    Returns: {'rafters': 配置した垂木(構造材)の本数}
+    Returns: {'rafters': 配置した垂木(軸組)の本数}
     """
     validated = validate_document(document)
     return {

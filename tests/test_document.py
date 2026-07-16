@@ -14,24 +14,32 @@ from vectorworks_plugin_repeated_rafters.document import (
 
 
 def make_rafter(
-    start: tuple[float, float] = (0.0, 0.0),
-    end: tuple[float, float] = (0.0, 3000.0),
+    origin: tuple[float, float] = (0.0, 0.0),
+    angle: float = 90.0,
+    span: float = 3000.0,
+    overhang: float = 455.0,
+    pitch: float = 21.8,
     width: float = 45.0,
     height: float = 60.0,
-    elevation: float = 0.0,
-    end_elevation: float = 1200.0,
     rafter_class: str = '04構造-02木造-05小屋組-05垂木',
-    member_id: str = '45×60 - 垂木',
+    label: str = '45×60@455',
 ) -> RafterCommand:
     return {
         'class': rafter_class,
-        'member_id': member_id,
-        'start': list(start),
-        'end': list(end),
+        'label': label,
+        'origin': list(origin),
+        'angle': angle,
+        'span': span,
+        'overhang': overhang,
+        'pitch': pitch,
         'width': width,
         'height': height,
-        'elevation': elevation,
-        'end_elevation': end_elevation,
+        'config': 'SWB',
+        'bearing_inset': '52.5',
+        'eave_style': 'vertical',
+        'fascia_height': '60',
+        'vertical_reference': 'top',
+        'material': 'Wood',
     }
 
 
@@ -74,9 +82,9 @@ class TestValidateDocument:
         with pytest.raises(DocumentValidationError):
             validate_document(doc)
 
-    def test_rejects_non_point_start(self) -> None:
+    def test_rejects_non_point_origin(self) -> None:
         rafter = make_rafter()
-        rafter['start'] = [0.0]
+        rafter['origin'] = [0.0]
         with pytest.raises(DocumentValidationError):
             validate_document(make_document(rafters=[rafter]))
 
@@ -86,15 +94,36 @@ class TestValidateDocument:
         with pytest.raises(DocumentValidationError):
             validate_document(make_document(rafters=[rafter]))
 
-    def test_rejects_nan_elevation(self) -> None:
+    def test_rejects_nan_span(self) -> None:
         rafter = make_rafter()
-        rafter['end_elevation'] = float('nan')
+        rafter['span'] = float('nan')
         with pytest.raises(DocumentValidationError):
             validate_document(make_document(rafters=[rafter]))
 
-    def test_member_id_may_be_empty(self) -> None:
-        # member_id は文字列であれば空でも良い(検証は非空を要求しない)
-        doc = make_document(rafters=[make_rafter(member_id='')])
+    def test_rejects_negative_overhang(self) -> None:
+        rafter = make_rafter(overhang=-1.0)
+        with pytest.raises(DocumentValidationError):
+            validate_document(make_document(rafters=[rafter]))
+
+    def test_zero_overhang_is_valid(self) -> None:
+        doc = make_document(rafters=[make_rafter(overhang=0.0)])
+        assert validate_document(doc) is doc
+
+    def test_rejects_non_string_proxied_field(self) -> None:
+        rafter = make_rafter()
+        rafter['config'] = 1  # type: ignore[typeddict-item]
+        with pytest.raises(DocumentValidationError):
+            validate_document(make_document(rafters=[rafter]))
+
+    def test_proxied_material_may_be_empty(self) -> None:
+        # material は空文字(材質無指定)でも検証を通る。
+        doc = make_document(rafters=[make_rafter()])
+        doc['rafters'][0]['material'] = ''
+        assert validate_document(doc) is doc
+
+    def test_label_may_be_empty(self) -> None:
+        # label は文字列であれば空でも良い(検証は非空を要求しない)
+        doc = make_document(rafters=[make_rafter(label='')])
         assert validate_document(doc) is doc
 
     def test_does_not_mutate_input(self) -> None:

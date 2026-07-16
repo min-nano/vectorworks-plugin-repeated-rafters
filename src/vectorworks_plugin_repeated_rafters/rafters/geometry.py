@@ -15,12 +15,15 @@
   無限に延長した直線とみなし、屋根の水平投影面(パス)を基準線方向へ射影した
   広がりの全域に、始点を 0 とした指定間隔の位置で垂木を並べる。各垂木は下記の
   とおり屋根投影面でクリップされる。
-- **面全体・両方向**: 各垂木は地廻り基準線から棟側(高い側)と軒先側(低い側)の
-  **両方向**へ伸び、屋根水平投影面でクリップした長さになる。地廻りより軒先側
-  (軒の出)は基準より下がる。
-- **勾配なりに傾く**: 立ち上がり = 地廻り基準線からの水平距離 × 勾配/10。
-  高さ 0 の基準(データム)は地廻り基準線。棟側は正、軒先側(軒の出)は負の高さ。
-  勾配は寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。
+- **本体と軒の出**: 各垂木は地廻り基準線から棟側(高い側)と軒先側(低い側)の
+  両方向へ屋根水平投影面でクリップされる。棟側(t=0→t_max)が本体 ``span``、
+  軒側(t=0→t_min<0)が軒の出 ``overhang``(= -t_min)になる。屋根投影面は軒を
+  含む面なので、地廻りより軒側のはみ出しがそのまま軒の出。
+- **勾配なりに傾く**: 軸組ツール(FramingMember)へは勾配角 ``pitch`` =
+  ``degrees(atan(勾配/10))`` で渡す。配置点 ``origin``(地廻り基準線上、高さ 0 の
+  データム)に、棟方向 ``angle``(度)で回した部材を置き、``span``/``overhang``/
+  ``pitch`` からツールが立体を生成する。勾配は寸勾配(10 の水平に対する立ち上がり、
+  例 4 = 4/10)。
 - **棟/軒先の向きの自動判定**: 基準線の中点から屋根投影面が広く伸びる側を棟
   (高い側)、狭い側(軒の出)を軒先(低い側)として自動的に決める。ユーザーは
   コントロールポイントの向き(始点・終点の順序)を気にしなくてよい。
@@ -220,9 +223,12 @@ def _choose_up_normal(
     return left if left_ext >= right_ext else right
 
 
-def make_member_id(width: float, height: float) -> str:
-    """垂木の構造材 ID "{幅}×{成} - 垂木" を組み立てる(整数寸は小数点なし)。"""
-    return f'{_format_mm(width)}×{_format_mm(height)} - 垂木'
+def make_label(width: float, height: float, spacing: float) -> str:
+    """垂木の表示ラベル "{幅}×{成}@{間隔}" を組み立てる(整数寸は小数点なし)。
+
+    軸組ツール(FramingMember)の ``labelText`` に載せる(例 "45×60@455")。
+    """
+    return f'{_format_mm(width)}×{_format_mm(height)}@{_format_mm(spacing)}'
 
 
 def _format_mm(value: float) -> str:
@@ -256,21 +262,44 @@ def build_rafter_commands(
     height: float,
     spacing: float,
     rafter_class: str,
+    config: str,
+    bearing_inset: str,
+    eave_style: str,
+    fascia_height: str,
+    vertical_reference: str,
+    material: str,
 ) -> list[RafterCommand]:
     """屋根水平投影面と各パラメータから垂木命令のリストを組み立てる。
 
+    垂木は軸組ツール(``FramingMember``, ``type='rafter'``)で描く前提で、各配置位置
+    の命令に origin(地廻り基準線上の配置点=データム)・angle(棟方向の平面回転,
+    度)・span(地廻り→棟の水平長)・overhang(地廻り→軒先の水平長=軒の出, >=0)・
+    pitch(勾配角, 度)を載せる。屋根投影面(パス)は**軒を含めた面**とみなし、
+    地廻りより軒側のはみ出しを overhang として FramingMember に描かせる。
+
     Args:
-        path: 屋根水平投影面の外形頂点列 [[x, y], ...](PIO のパス。閉ポリゴン)。
+        path: 屋根水平投影面の外形頂点列 [[x, y], ...](PIO のパス。閉ポリゴン。
+            軒先まで含む)。
         base_line: 地廻り基準線の 2 端点 [[x1, y1], [x2, y2]](コントロール
             ポイント)。垂木はこの直線に直交し、直線を無限に延長した向きに沿って
             ``spacing`` 間隔で並ぶ。並ぶ範囲は 2 端点の間ではなく、屋根投影面
             (パス)を基準線方向へ射影した広がり全域。``None`` や退化した線の
-            場合はパスの最初の辺を基準辺に使う。
-        slope: 寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。
+            場合はパスの最初の辺を基準辺に使う(この場合 overhang は 0)。
+        slope: 寸勾配(10 の水平に対する立ち上がり、例 4 = 4/10)。pitch(度)へ
+            ``degrees(atan(slope/10))`` で変換する。
         width: 垂木幅 (mm, 基準線方向の断面寸法)。
         height: 垂木成 (mm)。
         spacing: 垂木の間隔 (mm, 基準線に沿った配置間隔)。
         rafter_class: 各垂木に割り当てる作図クラス名。
+        config: 軸組ツールからプロキシする部材構成 (FramingMember の ``config``)。
+            以下 5 つと共に、ジオメトリ計算はこれらを解釈せず各命令へそのまま
+            載せ、描画フェーズが対応する FramingMember レコードフィールドへ
+            転送する(垂木の要点のみ)。
+        bearing_inset: 支持点の食い込み (``bearinginset``)。
+        eave_style: 軒先(鼻隠し)の形状 (``eavestyle``)。
+        fascia_height: 鼻隠し成 (``fasciaheight``)。
+        vertical_reference: 高さ基準 (``verticalReference``)。
+        material: 材質 (``Material``)。
 
     Returns:
         垂木命令のリスト。頂点が 3 点未満・基準線が退化・間隔が 0 以下など
@@ -300,7 +329,11 @@ def build_rafter_commands(
         if abs(up[0]) <= _EPS and abs(up[1]) <= _EPS:
             return []
 
-    member_id = make_member_id(width, height)
+    label = make_label(width, height, spacing)
+    # 勾配角(度)。寸勾配(10 の水平に対する立ち上がり)から換算する。
+    pitch = math.degrees(math.atan(slope / 10.0))
+    # 棟方向(up)の平面回転角(度)。垂木はこの向きに伸びる。
+    angle = math.degrees(math.atan2(up[1], up[0]))
     commands: list[RafterCommand] = []
 
     # 地廻り基準線を無限直線とみなし、垂木を並べる範囲は屋根投影面(パス)を
@@ -327,20 +360,31 @@ def build_rafter_commands(
                 continue
             t_min = 0.0
             t_max = t_far
-        if t_max - t_min <= _EPS:
+        # span = 地廻り(t=0)→棟(t_max)の水平長。棟側に伸びない位置は垂木を置かない。
+        span = t_max
+        if span <= _EPS:
             continue
-        start = (origin[0] + up[0] * t_min, origin[1] + up[1] * t_min)
-        end = (origin[0] + up[0] * t_max, origin[1] + up[1] * t_max)
-        # 立ち上がり = 地廻り基準線(t=0)からの水平距離 × 勾配/10。
-        # 高さ 0 の基準は地廻り基準線。軒先側(t<0)は負になる。
+        # overhang = 地廻り(t=0)→軒先(t_min<0)の水平長(軒の出)。屋根投影面は
+        # 軒を含む面なので、地廻りより軒側のはみ出しがそのまま軒の出になる。
+        # 地廻りが屋根投影面の軒縁より外側(t_min>=0)なら軒の出なし。
+        overhang = max(0.0, -t_min)
         commands.append({
             'class': rafter_class,
-            'member_id': member_id,
-            'start': [start[0], start[1]],
-            'end': [end[0], end[1]],
+            'label': label,
+            'origin': [origin[0], origin[1]],
+            'angle': angle,
+            'span': span,
+            'overhang': overhang,
+            'pitch': pitch,
             'width': width,
             'height': height,
-            'elevation': t_min * slope / 10.0,
-            'end_elevation': t_max * slope / 10.0,
+            # 軸組ツール(FramingMember)からプロキシする値。ジオメトリ計算は
+            # 解釈せず、そのまま各命令へ載せる(描画フェーズが SetRField で転送)。
+            'config': config,
+            'bearing_inset': bearing_inset,
+            'eave_style': eave_style,
+            'fascia_height': fascia_height,
+            'vertical_reference': vertical_reference,
+            'material': material,
         })
     return commands

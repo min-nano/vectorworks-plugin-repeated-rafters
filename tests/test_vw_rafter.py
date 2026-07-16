@@ -10,39 +10,53 @@ from vectorworks_plugin_repeated_rafters.document import RafterCommand
 
 
 def make_rafter_command(
-    start: tuple[float, float] = (0.0, 0.0),
-    end: tuple[float, float] = (0.0, 4000.0),
+    origin: tuple[float, float] = (0.0, 0.0),
+    angle: float = 90.0,
+    span: float = 4000.0,
+    overhang: float = 455.0,
+    pitch: float = 21.8,
     width: float = 45.0,
     height: float = 60.0,
-    elevation: float = 0.0,
-    end_elevation: float = 1600.0,
     rafter_class: str = '04構造-02木造-05小屋組-05垂木',
-    member_id: str = '45×60 - 垂木',
+    label: str = '45×60@455',
+    config: str = 'SWB',
+    bearing_inset: str = '52.5',
+    eave_style: str = 'vertical',
+    fascia_height: str = '60',
+    vertical_reference: str = 'top',
+    material: str = 'Wood',
 ) -> RafterCommand:
     return {
         'class': rafter_class,
-        'member_id': member_id,
-        'start': list(start),
-        'end': list(end),
+        'label': label,
+        'origin': list(origin),
+        'angle': angle,
+        'span': span,
+        'overhang': overhang,
+        'pitch': pitch,
         'width': width,
         'height': height,
-        'elevation': elevation,
-        'end_elevation': end_elevation,
+        'config': config,
+        'bearing_inset': bearing_inset,
+        'eave_style': eave_style,
+        'fascia_height': fascia_height,
+        'vertical_reference': vertical_reference,
+        'material': material,
     }
 
 
 def _make_vs_mock(plugin_available: bool = True) -> MagicMock:
     """execute_rafters() 用 vs モック。
 
-    plugin_available=True なら CreateCustomObjectPath は非 null を返す
-    (構造材プラグイン利用可能)。
+    plugin_available=True なら CreateCustomObject は非 null を返す
+    (軸組ツール FramingMember 利用可能)。
     """
     vs_mock = MagicMock()
     null_handle = object()
     non_null_handle = object()
     vs_mock.Handle.return_value = null_handle
     vs_mock.LNewObj.return_value = non_null_handle
-    vs_mock.CreateCustomObjectPath.return_value = (
+    vs_mock.CreateCustomObject.return_value = (
         non_null_handle if plugin_available else null_handle)
     return vs_mock
 
@@ -63,39 +77,38 @@ class TestExecuteRafters:
     def test_returns_count(self) -> None:
         vs_mock = _make_vs_mock()
         count = _run_execute_rafters(vs_mock, [
-            make_rafter_command(start=(0.0, 0.0)),
-            make_rafter_command(start=(1000.0, 0.0)),
+            make_rafter_command(origin=(0.0, 0.0)),
+            make_rafter_command(origin=(1000.0, 0.0)),
         ])
         assert count == 2
 
-    def test_path_carries_incline_in_z(self) -> None:
-        """傾き(勾配)はパスの Z 成分で表す(高さバインドは使わない)。"""
+    def test_draws_with_framing_member(self) -> None:
+        """垂木は軸組ツール(FramingMember)で描く。"""
         vs_mock = _make_vs_mock()
-        vertex_calls: list[tuple[float, float, float]] = []
-        move3d_calls: list[tuple[float, float, float]] = []
+        _run_execute_rafters(vs_mock, [make_rafter_command()])
+        assert vs_mock.CreateCustomObject.call_count == 1
+        assert vs_mock.CreateCustomObject.call_args.args[0] == 'FramingMember'
+        # StructuralMember のパス生成は使わない。
+        vs_mock.CreateCustomObjectPath.assert_not_called()
 
-        def capture_vertex(h: object, x: float, y: float, z: float) -> None:
-            vertex_calls.append((x, y, z))
-
-        def capture_move3d(x: float, y: float, z: float) -> None:
-            move3d_calls.append((x, y, z))
-
-        vs_mock.AddVertex3D.side_effect = capture_vertex
-        vs_mock.Move3D.side_effect = capture_move3d
+    def test_places_via_rotate_and_move(self) -> None:
+        """棟方向へ Rotate3D し、地廻り基準線上の配置点へ Move3D する。"""
+        vs_mock = _make_vs_mock()
+        rotate_calls: list[tuple[float, float, float]] = []
+        move_calls: list[tuple[float, float, float]] = []
+        vs_mock.Rotate3D.side_effect = (
+            lambda x, y, z: rotate_calls.append((x, y, z)))
+        vs_mock.Move3D.side_effect = (
+            lambda x, y, z: move_calls.append((x, y, z)))
 
         _run_execute_rafters(vs_mock, [
-            make_rafter_command(start=(500.0, 0.0), end=(500.0, 4000.0),
-                                elevation=0.0, end_elevation=1600.0),
+            make_rafter_command(origin=(500.0, 1000.0), angle=90.0),
         ])
-
-        # 方向ベクトルは (0, 4000, 1600)(Z=立ち上がり。傾きをパスに持たせる)
-        assert vertex_calls == [
-            (pytest.approx(0.0), pytest.approx(4000.0), pytest.approx(1600.0)),
-        ]
-        # Move3D で始端(軒側 (500,0,0))へ移動
+        # Z 回り(3 番目)に angle=90 度、平面配置点 (500,1000,0) へ移動
+        assert any(abs(z - 90.0) < 1e-6 for _x, _y, z in rotate_calls)
         assert any(
-            abs(x - 500.0) < 1e-6 and abs(y) < 1e-6 and abs(z) < 1e-6
-            for x, y, z in move3d_calls
+            abs(x - 500.0) < 1e-6 and abs(y - 1000.0) < 1e-6 and abs(z) < 1e-6
+            for x, y, z in move_calls
         )
 
     def test_does_not_use_story_bound(self) -> None:
@@ -112,20 +125,39 @@ class TestExecuteRafters:
         class_args = [c.args[1] for c in vs_mock.SetClass.call_args_list]
         assert '04構造-02木造-05小屋組-05垂木' in class_args
 
-    def test_sets_member_id_and_section_fields(self) -> None:
+    def test_sets_type_and_section_fields(self) -> None:
         vs_mock = _make_vs_mock()
         _run_execute_rafters(vs_mock, [
-            make_rafter_command(width=45.0, height=105.0,
-                                member_id='45×105 - 垂木'),
+            make_rafter_command(width=45.0, height=105.0, overhang=910.0,
+                                label='45×105@455'),
         ])
         rfields = {(c.args[2], c.args[3]) for c in vs_mock.SetRField.call_args_list}
-        assert ('MemberID', '45×105 - 垂木') in rfields
-        assert ('MajorBreadth', '45') in rfields
-        assert ('MajorDepth', '105') in rfields
-        assert ('ProfileShape', 'Rectangle') in rfields
+        assert ('type', 'rafter') in rfields
+        assert ('structuralUse', 'rafter') in rfields
+        assert ('width', '45') in rfields
+        assert ('height', '105') in rfields
+        assert ('overhang', '910') in rfields
+        assert ('labelText', '45×105@455') in rfields
+
+    def test_proxies_member_parameters(self) -> None:
+        """軸組ツールからプロキシしたパラメータが同名フィールドへ転送される。"""
+        vs_mock = _make_vs_mock()
+        _run_execute_rafters(vs_mock, [
+            make_rafter_command(
+                config='DWB', bearing_inset='60', eave_style='square',
+                fascia_height='45', vertical_reference='bottom',
+                material='木製 SPF 軸組 MT'),
+        ])
+        rfields = {(c.args[2], c.args[3]) for c in vs_mock.SetRField.call_args_list}
+        assert ('config', 'DWB') in rfields
+        assert ('bearinginset', '60') in rfields
+        assert ('eavestyle', 'square') in rfields
+        assert ('fasciaheight', '45') in rfields
+        assert ('verticalReference', 'bottom') in rfields
+        assert ('Material', '木製 SPF 軸組 MT') in rfields
 
     def test_fallback_to_line_when_plugin_unavailable(self) -> None:
-        """構造材プラグインが使えない場合は通常線にフォールバックする。"""
+        """軸組ツールが使えない場合は通常線にフォールバックする。"""
         vs_mock = _make_vs_mock(plugin_available=False)
         count = _run_execute_rafters(vs_mock, [
             make_rafter_command(rafter_class='04構造-02木造-05小屋組-05垂木'),

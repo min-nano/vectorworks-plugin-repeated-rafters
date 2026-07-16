@@ -7,35 +7,44 @@
 姉妹プロジェクト vectorworks_plugin_import_ifc_homeskz と同じ
 「2 フェーズ分離 + JSON 命令セット」の設計を踏襲している。あちらは IFC を
 解析して多種のオブジェクトを描くのに対し、こちらは 1 種類のオブジェクト
-(垂木=StructuralMember)だけを描くため、命令セットは ``rafters`` の 1 リスト
-だけを持つ(将来、母屋・鼻母屋などを追加する場合はここへ命令種別を足す)。
+(垂木=軸組ツール ``FramingMember``)だけを描くため、命令セットは ``rafters``
+の 1 リストだけを持つ(将来、母屋・鼻母屋などを追加する場合はここへ命令種別を足す)。
 
-スキーマ (version 1):
+垂木は VectorWorks の**軸組ツール(``FramingMember``, ``type='rafter'``)**で描く。
+``FramingMember`` の rafter は**点 + 平面回転**で配置する PIO で、地廻り基準線(支持点の
+線)を原点(データム)とし、そこから棟側へ ``span`` の水平長で本体を、軒側へ ``overhang``
+の水平長で軒の出を描く。傾きは ``pitch``(勾配角)で与える。
+
+スキーマ (version 2):
 
     {
-        "version": 1,
+        "version": 2,
         "rafters": [
             {
-                # 垂木 1 本を VectorWorks の構造材ツール(軸組ツール、
-                # StructuralMember)で描く命令。
+                # 垂木 1 本を軸組ツール(FramingMember, type='rafter')で描く命令。
                 "class": "04構造-02木造-05小屋組-05垂木",  # 割り当てるクラス名
-                "member_id": "45×60 - 垂木",   # 構造材 ID (StructuralMember の MemberID)
-                # start/end は垂木の水平投影(平面)線。start は軒先側(低い側)の
-                # 縁、end は棟側(高い側)の縁の点。垂木は地廻り基準線から両方向へ
-                # 伸び、屋根水平投影面でクリップされる。いずれも PIO のローカル
-                # 座標(mm)。
-                "start": [x1, y1],
-                "end": [x2, y2],
-                "width": 45.0,            # 垂木幅 (mm, 基準線方向の断面寸法)
-                "height": 60.0,           # 垂木成 (mm, 断面のもう一方の寸法)
-                # 垂木は勾配なりに傾く。elevation=始端(軒先側)の Z、
-                # end_elevation=終端(棟側)の Z。高さ 0 の基準(データム)は地廻り
-                # 基準線で、軒の出側(軒先)は負になりうる。差(end_elevation -
-                # elevation)が全長の立ち上がり = 水平投影長 × 勾配/10。描画フェーズ
-                # はこの傾きをパス(3D)そのものに持たせて描く(ストーリの無い単独
-                # PIO のため高さバインドは使わない)。
-                "elevation": -120.0,
-                "end_elevation": 300.0
+                "label": "45×60@455",       # 表示ラベル (FramingMember の labelText)
+                # origin は地廻り基準線上の配置点(平面, PIO ローカル座標 mm)。
+                # 高さ 0 のデータム。angle は棟方向(垂木が伸びる向き)の平面回転(度)。
+                "origin": [x, y],
+                "angle": 30.0,
+                # span は地廻り→棟の水平長(本体), overhang は地廻り→軒先の水平長
+                # (軒の出, >=0)。いずれも屋根水平投影面(パス)でクリップして得る。
+                "span": 4000.0,
+                "overhang": 455.0,
+                "pitch": 21.8,               # 勾配角(度) = atan(寸勾配/10)
+                "width": 45.0,               # 垂木幅 (mm)
+                "height": 60.0,              # 垂木成 (mm)
+                # 以下は「軸組ツール(FramingMember)で設定するパラメータ」を PIO
+                # パラメータとして公開し、描画フェーズへプロキシ(そのまま転送)する
+                # 値。描画フェーズは各値を MEMBER_FIELD_MAP に従い FramingMember の
+                # レコードフィールドへ SetRField する。垂木の要点のみを対象とする。
+                "config": "SWB",             # 部材構成 (config)
+                "bearing_inset": "52.5",     # 支持点の食い込み (bearinginset)
+                "eave_style": "vertical",    # 軒先(鼻隠し)の形状 (eavestyle)
+                "fascia_height": "60",       # 鼻隠し成 (fasciaheight)
+                "vertical_reference": "top", # 高さ基準 (verticalReference)
+                "material": "Wood"           # 材質 (Material)
             }
         ]
     }
@@ -45,27 +54,51 @@ from __future__ import annotations
 import json
 from typing import Any, TypedDict
 
-DOCUMENT_VERSION = 1
+DOCUMENT_VERSION = 2
+
+# 軸組ツール(FramingMember)からプロキシする文字列フィールド。命令セットの
+# キー名を FramingMember のレコードフィールド名へ対応付ける。描画フェーズは
+# この対応に従い、各値をそのまま ``SetRField`` へ転送する(垂木の要点のみ)。
+MEMBER_FIELD_MAP: dict[str, str] = {
+    'config': 'config',
+    'bearing_inset': 'bearinginset',
+    'eave_style': 'eavestyle',
+    'fascia_height': 'fasciaheight',
+    'vertical_reference': 'verticalReference',
+    'material': 'Material',
+}
 
 
 # 'class' キーが Python の予約語のため functional 構文で定義する
 RafterCommand = TypedDict('RafterCommand', {
     'class': str,
-    'member_id': str,
-    'start': list[float],
-    'end': list[float],
+    'label': str,
+    'origin': list[float],
+    'angle': float,
+    'span': float,
+    'overhang': float,
+    'pitch': float,
     'width': float,
     'height': float,
-    'elevation': float,
-    'end_elevation': float,
+    # 軸組ツール(FramingMember)からプロキシする値(MEMBER_FIELD_MAP のキー)。
+    'config': str,
+    'bearing_inset': str,
+    'eave_style': str,
+    'fascia_height': str,
+    'vertical_reference': str,
+    'material': str,
 })
-"""垂木 1 本を構造材ツール(StructuralMember)で描画する命令。
+"""垂木 1 本を軸組ツール(FramingMember, type='rafter')で描画する命令。
 
-start/end は垂木の水平投影線(始端=軒先側=低い側、終端=棟側=高い側)。垂木は
-地廻り基準線から両方向へ伸び、屋根投影面でクリップされる。elevation/end_elevation
-は始端/終端の Z 高さで、高さ 0 の基準は地廻り基準線(軒の出側は負になりうる)。
-差が全長の立ち上がり(= 水平投影長 × 勾配/10)。class は割り当てる構造クラス名、
-member_id は "{幅}×{成} - 垂木" 形式の構造材 ID。
+origin は地廻り基準線上の配置点(平面, 高さ 0 のデータム)。angle は棟方向の平面回転
+(度)。span は地廻り→棟の水平長(本体)、overhang は地廻り→軒先の水平長(軒の出, >=0)。
+pitch は勾配角(度)。width/height は断面。class は割り当てる構造クラス名、label は
+"{幅}×{成}@{間隔}" 形式の表示ラベル。
+
+config 以降は「軸組ツール(FramingMember)で設定するパラメータ」を PIO パラメータ
+として公開し、描画フェーズへプロキシ(そのまま転送)する値。描画フェーズは
+``MEMBER_FIELD_MAP`` に従い各値を FramingMember の同名レコードフィールドへ設定する。
+垂木の要点のみを対象とし、断面形状の各種オプション等は VectorWorks の既定に委ねる。
 """
 
 
@@ -102,15 +135,20 @@ def _validate_rafter(index: int, command: Any) -> None:
     _require(isinstance(command, dict), f'{where} は dict である必要があります')
     _require(isinstance(command.get('class'), str) and command['class'],
              f'{where}.class は非空文字列である必要があります')
-    _require(isinstance(command.get('member_id'), str),
-             f'{where}.member_id は文字列である必要があります')
-    _require(_is_point(command.get('start')),
-             f'{where}.start は [x, y] の数値ペアである必要があります')
-    _require(_is_point(command.get('end')),
-             f'{where}.end は [x, y] の数値ペアである必要があります')
-    for key in ('width', 'height', 'elevation', 'end_elevation'):
+    _require(isinstance(command.get('label'), str),
+             f'{where}.label は文字列である必要があります')
+    _require(_is_point(command.get('origin')),
+             f'{where}.origin は [x, y] の数値ペアである必要があります')
+    for key in ('angle', 'span', 'overhang', 'pitch', 'width', 'height'):
         _require(_is_number(command.get(key)),
                  f'{where}.{key} は数値である必要があります')
+    # overhang(軒の出)は負にならない。
+    _require(command.get('overhang', 0) >= 0,
+             f'{where}.overhang は 0 以上である必要があります')
+    # 軸組ツールからプロキシする値はいずれも文字列(空文字も可)。
+    for key in MEMBER_FIELD_MAP:
+        _require(isinstance(command.get(key), str),
+                 f'{where}.{key} は文字列である必要があります')
 
 
 def validate_document(document: Any) -> Document:

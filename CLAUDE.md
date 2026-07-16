@@ -4,17 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## このリポジトリについて
 
-屋根の水平投影面・勾配・地廻り基準線・垂木の断面と間隔を指定すると、**VectorWorks の構造材ツール（軸組ツール、`StructuralMember`）で垂木を指定間隔に並べて描画する**パスプラグインオブジェクト（PIO）です。
+屋根の水平投影面・勾配・地廻り基準線・垂木の断面と間隔を指定すると、**VectorWorks の軸組ツール（`FramingMember`, `type='rafter'`）で垂木を指定間隔に並べて描画する**パスプラグインオブジェクト（PIO）です。
+
+> **用語の注意**: 「軸組ツール」は VectorWorks の `FramingMember`（`type='rafter'` で垂木）です。構造材ツール（`StructuralMember`）とは別物なので混同しないこと。`FramingMember` は**点＋平面回転**で配置する PIO で、勾配（`pitch`）・軒の出（`overhang`）・鼻隠し成（`fasciaheight`）・支持点の食い込み（`bearinginset`）など垂木専用のパラメータを持つ。
 
 姉妹プロジェクト **vectorworks_plugin_import_ifc_homeskz**（ホームズ君 IFC インポート）の設計・規約を踏襲しています。あちらは IFC を解析して多種のオブジェクトを配置する**メニューコマンド**ですが、こちらは 1 種類のオブジェクト（垂木）だけを描く**パス PIO** です。
 
 ### 配置モデル
 
-- **屋根の水平投影面** = PIO のパス（閉ポリゴン）。
-- **地廻り基準線** = 2 つの**コントロールポイント**で指定する**内蔵の直線**。軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りをパスの辺で制御せず独立に置けるようにしている。コントロールポイントの座標はユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定。フィールド名では読めない）の末尾に `X`／`Y` を付けたフィールドで読む。コントロールポイント未設定（2 点が一致）なら、パスの最初の辺を基準辺に使うフォールバックに切り替える。
+- **屋根の水平投影面** = PIO のパス（閉ポリゴン）。**軒先まで含めた面**として与える（軒の出は下記のとおり `overhang` として軸組ツールが描く）。
+- **地廻り基準線** = 2 つの**コントロールポイント**で指定する**内蔵の直線**（支持点の線）。軒の出があると屋根投影面の軒側の辺は軒先であって地廻りではないため、地廻りをパスの辺で制御せず独立に置けるようにしている。コントロールポイントの座標はユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定。フィールド名では読めない）の末尾に `X`／`Y` を付けたフィールドで読む。コントロールポイント未設定（2 点が一致）なら、パスの最初の辺を基準辺に使うフォールバックに切り替える（この場合 `overhang`＝0）。
 - 垂木は基準線に**直交する向き**で、基準線を**無限に延長した直線**に沿って `Spacing` 間隔に並ぶ（基準線の始点＝0 から `Spacing` の倍数の位置）。並ぶ**範囲は基準線の 2 端点の間に限らず**、屋根の水平投影面（パス）を基準線方向へ射影した広がりの全域とする（基準線が短くてもパス幅いっぱいに並ぶ）。各垂木は下記のとおり屋根投影面でクリップされる。
-- 各垂木は地廻り基準線から**棟側（高い側）と軒先側（低い側）の両方向**へ、屋根投影面でクリップした長さで伸びる（**面全体**）。棟／軒先の向きは、基準線の中点から屋根投影面が広く伸びる側を棟、狭い側（軒の出）を軒先として**自動判定**する（コントロールポイントの始点・終点の順序に依存しない）。
-- 垂木は**勾配なりに傾く**。立ち上がり ＝ 地廻り基準線からの水平距離 × 勾配 ÷ 10。勾配は**寸勾配**（10 の水平に対する立ち上がり）。高さ 0 の基準（データム）は地廻り基準線で、軒の出側（軒先）は負の高さになる。
+- 各垂木は地廻り基準線から**棟側（高い側）と軒先側（低い側）の両方向**へ屋根投影面でクリップされる。**棟側（t=0→t_max）が本体（`span`）、軒側（t=0→t_min<0）が軒の出（`overhang`＝-t_min）**。棟／軒先の向きは、基準線の中点から屋根投影面が広く伸びる側を棟、狭い側（軒の出）を軒先として**自動判定**する（コントロールポイントの始点・終点の順序に依存しない）。
+- 垂木は**勾配なりに傾く**。軸組ツールへは勾配角 `pitch`＝`atan(寸勾配/10)`（度）で渡す。勾配は**寸勾配**（10 の水平に対する立ち上がり）。配置点 `origin`（地廻り基準線上、高さ 0 のデータム）に、棟方向 `angle`（度）で回した `FramingMember` を置き、`span`／`overhang`／`pitch` はツールが立体を生成する。
 
 今後、母屋・鼻母屋・広小舞などの付随要素の描画を追加する余地があります（命令セットに命令種別を足す）。
 
@@ -23,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 処理は **ジオメトリ計算フェーズ** と **VectorWorks 描画フェーズ** に完全分離されている。両フェーズは JSON 直列化可能な**命令セット（ドキュメント）**だけで接続され、`vs` との密結合を避けている（姉妹プロジェクトと同じ方針）。
 
 1. **ジオメトリ計算フェーズ（`rafters` サブパッケージ）** — `vs` に一切依存しない。屋根投影面（パス頂点列）とパラメータから、描くべき垂木を命令セット（dict）として組み立てる。通常の Python 環境で単体実行・検証できる。
-2. **描画フェーズ（`vw` サブパッケージ）** — `vs` だけに依存する。命令セットを検証（`validate_document`）してから構造材ツールで垂木を描く。
+2. **描画フェーズ（`vw` サブパッケージ）** — `vs` だけに依存する。命令セットを検証（`validate_document`）してから軸組ツール（`FramingMember`）で垂木を描く。
 
 命令セットのスキーマ（version・rafters 命令の形式）は `document.py` の docstring に定義されている。スキーマを変更するときは `DOCUMENT_VERSION` の互換性に注意し、`validate_document()` とテストも併せて更新すること。`run()` は両フェーズの間で `json.dumps`/`json.loads` を通すため、命令セットに直列化不能なオブジェクト（vs ハンドル等）を入れてはならない。
 
@@ -39,7 +41,7 @@ src/
             geometry.py       # 屋根投影面・地廻り基準線・勾配・断面・間隔 → rafter 命令（ポリゴン/レイ交点計算）
         vw/                   # フェーズ2: VectorWorks 描画（vs 依存）
             __init__.py       # execute_document(document) -> 実行数 dict
-            rafter.py         # rafter 命令 → 構造材（StructuralMember、傾斜材）
+            rafter.py         # rafter 命令 → 軸組（FramingMember, type='rafter'）
 main.py                      # VectorWorks に登録する PIO オブジェクトスクリプト（import + run）
 tests/                       # pytest 用テスト（CI は vs.py スタブを GitHub からダウンロード）
 pyproject.toml               # パッケージメタデータ
@@ -88,18 +90,20 @@ pyproject.toml               # パッケージメタデータ
 - `_choose_up_normal(mid, left, right, pts)`: 棟（高い側）を向く法線を、基準線の中点から屋根投影面が広く伸びる側で決める（狭い側が軒先＝軒の出）。同程度なら left を採用して決定的にする。
 - `_projection_range(origin, axis, pts)`: パス頂点を origin 基準・axis 方向へ射影した符号付き距離の最小・最大。基準線を無限直線とみなし、垂木を並べる範囲をパスの広がりで決めるのに使う。
 - `_inward_normal(a, b, pts)` / `_ray_far_intersection(origin, dir, pts)`: **フォールバック（パスの辺を基準線に使う）専用**。辺の内向き単位法線と、その内向き半直線とポリゴン各辺の最遠交点（t>ε の最大 t）。基準辺（t=0）から屋根面側の縁まで 1 方向に伸ばす（＝旧来の挙動）。
-- `build_rafter_commands`: 地廻り基準線を無限直線とみなし、パスを基準線方向へ射影した広がり（`_projection_range`）の全域に始点＝0 から `Spacing` 間隔の各点（両向きの整数倍）で垂木を並べる。各点で、フリーモードは棟側の法線に沿って両方向の符号付き交点の最小 t（軒先側）〜最大 t（棟側）、フォールバックは内向き最遠交点までの垂木命令を組み立てる。`elevation`＝t_min×勾配÷10（軒先側、負になりうる）、`end_elevation`＝t_max×勾配÷10（棟側）。高さ 0 の基準は地廻り基準線（t=0）。頂点 3 点未満・基準線退化・間隔 0 以下・交点 2 未満は空/スキップ。計算は入力順・許容誤差に対して決定的。
-- `make_member_id(width, height)`: 構造材 ID `"{幅}×{成} - 垂木"`（整数寸は小数点なし）。
+- `build_rafter_commands`: 地廻り基準線を無限直線とみなし、パスを基準線方向へ射影した広がり（`_projection_range`）の全域に始点＝0 から `Spacing` 間隔の各点（両向きの整数倍）で垂木を並べる。各点で、フリーモードは棟側の法線に沿って両方向の符号付き交点の最小 t（軒先側）〜最大 t（棟側）、フォールバックは内向き最遠交点までを取る。各命令は `origin`（配置点＝基準線上）・`angle`（棟方向の平面回転, 度＝`atan2(up)`）・`span`＝t_max（本体, 棟側の水平長）・`overhang`＝max(0, -t_min)（軒の出, 軒側の水平長）・`pitch`＝`atan(勾配/10)`（度）を持つ。`span<=ε` はスキップ。高さ 0 の基準は地廻り基準線（t=0）。頂点 3 点未満・基準線退化・間隔 0 以下・交点 2 未満は空/スキップ。計算は入力順・許容誤差に対して決定的。**軸組ツール（`FramingMember`）からプロキシするパラメータ**（`config`/`bearing_inset`/`eave_style`/`fascia_height`/`vertical_reference`/`material`）はジオメトリ計算では解釈せず、受け取った値をそのまま各命令へ載せる（描画フェーズが `SetRField` で転送）。
+- `make_label(width, height, spacing)`: 表示ラベル `"{幅}×{成}@{間隔}"`（FramingMember の `labelText`。整数寸は小数点なし）。
 
 ### 垂木の描画（vw/rafter.py）
 
-- `draw_rafter`: `vs.CreateNurbsCurve` + `vs.AddVertex3D` で**傾きを持たせた 3D パス**（始端 (0,0,0) → 終端 (dx, dy, 立ち上がり)）を作り、矩形プロファイルとともに `vs.CreateCustomObjectPath('StructuralMember', path, profile)` で構造材を配置。`vs.ResetOrientation3D` → `vs.Move3D(x1, y1, z1)` で始端（軒側）の実位置へ移動し、`vs.SetClass` でクラスを割り当て、`MemberID`/`ProfileShape`/`MajorBreadth`/`MajorDepth`/`B`/`D` 等のレコードフィールドを設定して `vs.ResetObject`。プラグインが使えない場合は水平投影の直線にフォールバックする。
-  - **傾きの与え方が姉妹プロジェクトと異なる**: 横架材インポート（`vw/member.py`）は**ストーリのあるモデル**に配置するため傾きを始端/終端の高さバインド（`SetObjectStoryBound`）で与え、パスは水平にする（パスにも Z を持たせると高さバインドが加算されて二重になるため）。こちらは**ストーリを持たない単独 PIO** の中で描くため高さバインドは使えず、代わりに**傾きをパス（3D）そのものに持たせる**。高さバインドを併用しないので二重加算は起きない。この描画挙動（3D パスの傾斜構造材が意図どおり描かれること）は **VectorWorks 上で最終確認する**（描画フェーズは他要素と同じく VW 上で検証する方針）。
+- `draw_rafter`: `vs.CreateCustomObject('FramingMember', 0, 0, 0)` で軸組（垂木）を原点に生成し、`vs.ResetOrientation3D` → `vs.Rotate3D(0, 0, angle)`（棟方向へ平面回転）→ `vs.Move3D(origin_x, origin_y, 0)`（地廻り基準線上の配置点＝データム Z=0）で向き・位置を与える。`vs.SetClass` でクラスを割り当て、レコードフィールドを設定して `vs.ResetObject`。フィールドは固定の `type`=`structuralUse`=`'rafter'`、断面 `width`/`height`（`Width`/`Height` から）、`pitch`/`PitchAngle`（勾配角）、`overhang`（軒の出）、本体長 `span`（棟方向＝ローカル +X の制御点 `ControlPoint01X`）、`labelText`、そして**軸組ツールからプロキシした値**を `document.MEMBER_FIELD_MAP` の対応で同名フィールドへそのまま転送する（`config`/`bearinginset`/`eavestyle`/`fasciaheight`/`verticalReference`/`Material`）。プラグインが使えない場合は軒先〜棟の水平投影直線にフォールバックする。
+  - **軸組ツール（`FramingMember`）は点＋回転で配置する**。姉妹プロジェクトの横架材（`StructuralMember`）のようなパス生成や高さバインド（`SetObjectStoryBound`）は使わない。傾き（勾配）・軒の出はツールが `pitch`/`overhang` から立体を生成する。本体長（`span`）・向き（`angle`）・`pitch` の書式・制御点の与え方など VW 固有の挙動は **VectorWorks 上で最終確認する**（描画フェーズは他要素と同じく VW 上で検証する方針）。
 - `execute_rafters`: rafter 命令のリストを順に描画し配置数を返す。垂木は PIO が置かれたレイヤにそのまま描かれるため、レイヤ切り替え（`vs.Layer`）は行わない。
 
 ## VectorWorks へのプラグイン登録（名前・パラメータの一致）
 
-`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS` と、地廻り基準線のコントロールポイント座標 `PARAM_BASE_START_X`/`PARAM_BASE_START_Y`/`PARAM_BASE_END_X`/`PARAM_BASE_END_Y`＝`ControlPoint01X`/`ControlPoint01Y`/`ControlPoint02X`/`ControlPoint02Y`）。**コントロールポイントはフィールド名を変えても座標は読めず**、ユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定）の末尾に `X`/`Y` を付けたフィールドで読む。よって地廻り基準線用のコントロールポイントを最初に 2 つ作成すること。登録手順・パラメータ表は `README.md` を参照。
+`run()` が `vs.GetRField` で読むパラメータ名・プラグイン名は VectorWorks 側の登録と一致させる必要がある。定数は `src/vectorworks_plugin_repeated_rafters/__init__.py` 冒頭に集約している（`PLUGIN_NAME`＝`垂木群`、`PARAM_SLOPE`/`PARAM_WIDTH`/`PARAM_HEIGHT`/`PARAM_SPACING`/`PARAM_CLASS` と、地廻り基準線のコントロールポイント座標 `PARAM_BASE_START_X`/`PARAM_BASE_START_Y`/`PARAM_BASE_END_X`/`PARAM_BASE_END_Y`＝`ControlPoint01X`/`ControlPoint01Y`/`ControlPoint02X`/`ControlPoint02Y`）。**コントロールポイントはフィールド名を変えても座標は読めず**、ユニバーサル名 `ControlPoint01`／`ControlPoint02`（作成順に自動採番・固定）の末尾に `X`/`Y` を付けたフィールドで読む。よって地廻り基準線用のコントロールポイントを最初に 2 つ作成すること。
+
+**軸組ツール（`FramingMember`）のパラメータのプロキシ**: 上記に加え、軸組ツールで設定するパラメータのうち垂木の要点を PIO パラメータとして公開し、各垂木へ転送する（`PARAM_CONFIG`/`PARAM_BEARING_INSET`/`PARAM_EAVE_STYLE`/`PARAM_FASCIA_HEIGHT`/`PARAM_VERTICAL_REFERENCE`/`PARAM_MATERIAL`＝`config`/`bearinginset`/`eavestyle`/`fasciaheight`/`verticalReference`/`Material`）。PIO 側のパラメータ名は転送先の `FramingMember` フィールド名と同一にして対応を明確にしている。命令セットのキー名（snake_case）と転送先フィールド名の対応は `document.py` の `MEMBER_FIELD_MAP` に集約。断面（`width`/`height`）は `Width`/`Height`、勾配 `pitch` は `Slope`、`labelText` は寸法と間隔から決まるためプロキシ対象に含めない。登録手順・パラメータ表は `README.md` を参照。
 
 ## 開発プロセス: PR 作成と監視
 
