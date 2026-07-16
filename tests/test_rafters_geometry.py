@@ -15,6 +15,19 @@ RECT = [[0.0, 0.0], [6000.0, 0.0], [6000.0, 4000.0], [0.0, 4000.0]]
 CLASS = '04構造-02木造-05小屋組-05垂木'
 
 
+# 軸組ツールからプロキシするパラメータの既定(ジオメトリテスト用)。
+MEMBER_PARAMS: dict = {
+    'profile_shape': 'Rectangle',
+    'profile_series': 'AISC (Inch)',
+    'member_type': '2',
+    'structural_use': '1',
+    'axis_align': '1',
+    'start_condition': '3',
+    'end_condition': '3',
+    'material': '',
+}
+
+
 def _build(path: list[list[float]], **kwargs: object) -> list:
     params: dict = {
         'base_line': None,   # 既定はフォールバック(パスの最初の辺)
@@ -23,6 +36,7 @@ def _build(path: list[list[float]], **kwargs: object) -> list:
         'height': 60.0,
         'spacing': 1000.0,
         'rafter_class': CLASS,
+        **MEMBER_PARAMS,
     }
     params.update(kwargs)
     return build_rafter_commands(path, **params)
@@ -189,6 +203,16 @@ class TestBuildDocument:
     def test_wraps_commands_in_document(self) -> None:
         doc = build_document(
             RECT, base_line=None, slope=4.0, width=45.0, height=60.0,
-            spacing=2000.0, rafter_class=CLASS)
-        assert doc['version'] == 1
+            spacing=2000.0, rafter_class=CLASS, **MEMBER_PARAMS)
+        assert doc['version'] == 2
         assert len(doc['rafters']) == 4
+
+    def test_proxied_member_params_on_each_command(self) -> None:
+        doc = build_document(
+            RECT, base_line=None, slope=4.0, width=45.0, height=60.0,
+            spacing=2000.0, rafter_class=CLASS,
+            **{**MEMBER_PARAMS, 'structural_use': '4', 'material': 'MT'})
+        assert doc['rafters']
+        for rafter in doc['rafters']:
+            assert rafter['structural_use'] == '4'
+            assert rafter['material'] == 'MT'

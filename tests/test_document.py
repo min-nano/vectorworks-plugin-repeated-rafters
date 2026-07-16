@@ -32,6 +32,14 @@ def make_rafter(
         'height': height,
         'elevation': elevation,
         'end_elevation': end_elevation,
+        'profile_shape': 'Rectangle',
+        'profile_series': 'AISC (Inch)',
+        'member_type': '2',
+        'structural_use': '1',
+        'axis_align': '1',
+        'start_condition': '3',
+        'end_condition': '3',
+        'material': '',
     }
 
 
@@ -91,6 +99,17 @@ class TestValidateDocument:
         rafter['end_elevation'] = float('nan')
         with pytest.raises(DocumentValidationError):
             validate_document(make_document(rafters=[rafter]))
+
+    def test_rejects_non_string_proxied_field(self) -> None:
+        rafter = make_rafter()
+        rafter['structural_use'] = 1  # type: ignore[typeddict-item]
+        with pytest.raises(DocumentValidationError):
+            validate_document(make_document(rafters=[rafter]))
+
+    def test_proxied_material_may_be_empty(self) -> None:
+        # material は空文字(材質無指定)でも検証を通る。
+        doc = make_document(rafters=[make_rafter()])
+        assert validate_document(doc) is doc
 
     def test_member_id_may_be_empty(self) -> None:
         # member_id は文字列であれば空でも良い(検証は非空を要求しない)

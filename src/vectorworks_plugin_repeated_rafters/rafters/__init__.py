@@ -21,6 +21,14 @@ def build_document(
     height: float,
     spacing: float,
     rafter_class: str,
+    profile_shape: str,
+    profile_series: str,
+    member_type: str,
+    structural_use: str,
+    axis_align: str,
+    start_condition: str,
+    end_condition: str,
+    material: str,
 ) -> Document:
     """屋根水平投影面と各パラメータから JSON 命令セットを組み立てて返す。
 
@@ -33,6 +41,15 @@ def build_document(
         height: 垂木成 (mm)。
         spacing: 垂木の間隔 (mm)。
         rafter_class: 各垂木に割り当てる作図クラス名。
+        profile_shape: 軸組ツールからプロキシする断面形状 (``ProfileShape``)。
+            以下 7 つと共に描画フェーズへそのまま転送する(構造・断面の要点のみ)。
+        profile_series: 断面シリーズ (``ProfileSeries``)。
+        member_type: 部材タイプ (``MemberType``)。
+        structural_use: 構造用途 (``StructuralUse``)。
+        axis_align: 軸の位置合わせ (``AxisAlign``)。
+        start_condition: 始端条件 (``StartCondition``)。
+        end_condition: 終端条件 (``EndCondition``)。
+        material: 部材材質 (``MemberMaterial``。空文字は無指定)。
     """
     return {
         'version': DOCUMENT_VERSION,
@@ -44,5 +61,13 @@ def build_document(
             height=height,
             spacing=spacing,
             rafter_class=rafter_class,
+            profile_shape=profile_shape,
+            profile_series=profile_series,
+            member_type=member_type,
+            structural_use=structural_use,
+            axis_align=axis_align,
+            start_condition=start_condition,
+            end_condition=end_condition,
+            material=material,
         ),
     }

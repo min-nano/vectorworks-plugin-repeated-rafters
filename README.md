@@ -58,6 +58,16 @@ VectorWorks のプラグインマネージャで、以下の内容の**パスプ
   | `Height` | 実数 | 垂木成（mm） | 60 |
   | `Spacing` | 実数 | 垂木の間隔（mm、基準線に沿った配置間隔） | 455 |
   | `RafterClass` | 文字 | 垂木に割り当てる作図クラス名 | `04構造-02木造-05小屋組-05垂木` |
+  | `ProfileShape` | 文字 | 断面形状（軸組ツールの `ProfileShape` へプロキシ） | `Rectangle` |
+  | `ProfileSeries` | 文字 | 断面シリーズ（`ProfileSeries` へプロキシ） | `AISC (Inch)` |
+  | `MemberType` | 文字 | 部材タイプ（`MemberType` へプロキシ） | `2` |
+  | `StructuralUse` | 文字 | 構造用途（`StructuralUse` へプロキシ） | `1` |
+  | `AxisAlign` | 文字 | 軸の位置合わせ（`AxisAlign` へプロキシ） | `1` |
+  | `StartCondition` | 文字 | 始端条件（`StartCondition` へプロキシ） | `3` |
+  | `EndCondition` | 文字 | 終端条件（`EndCondition` へプロキシ） | `3` |
+  | `MemberMaterial` | 文字 | 部材材質（`MemberMaterial` へプロキシ。空欄=無指定） | （空） |
+
+> **軸組ツール（`StructuralMember`）パラメータのプロキシについて**: 上表の `ProfileShape` 以降は、**軸組ツールで設定するパラメータを PIO パラメータとして公開**し、垂木の描画時に各垂木（`StructuralMember`）の**同名レコードフィールドへそのまま転送（プロキシ）**するものです。構造・断面の要点のみを対象とし、表示（Above/At/Below）や Cover・Centerline・Caps などは VectorWorks の既定に委ねます。PIO 側のパラメータ（フィールド）名は転送先の `StructuralMember` フィールド名と同一にして対応を明確にしています。断面寸法（`MajorBreadth`/`MajorDepth`。矩形のため `MinorBreadth`/`MinorDepth` も同値）と `MemberID` は `Width`/`Height` から決まるため、これらは上表のプロキシ対象には含めません。
 
 > **コントロールポイントの座標の読み取りについて（重要）**: コントロールポイント型パラメータは、プラグインマネージャで「フィールド名」（例 `BaseStart`）を付けられますが、**このフィールド名は座標の読み取りには使えません**。VectorWorks はコントロールポイントの「パラメータの名前（ユニバーサル名）」を `ControlPoint01`・`ControlPoint02`… と**作成順に自動採番して固定**し（変更不可）、座標はその名前の末尾に `X`／`Y` を付けたフィールド（`ControlPoint01X`・`ControlPoint01Y`・`ControlPoint02X`・`ControlPoint02Y`）で保持します。コード側はこの名前で読み取るため、**地廻り基準線用のコントロールポイントを最初に 2 つ作成**してください（フィールド名は任意で構いません）。棟／軒先の向きは自動判定するので、2 点の順序は問いません。新規オブジェクトで基準線が見える位置に出るよう、プラグイン定義でコントロールポイントの既定座標を屋根の想定位置に設定しておくとよいです。
 

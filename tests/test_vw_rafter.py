@@ -18,6 +18,14 @@ def make_rafter_command(
     end_elevation: float = 1600.0,
     rafter_class: str = '04構造-02木造-05小屋組-05垂木',
     member_id: str = '45×60 - 垂木',
+    profile_shape: str = 'Rectangle',
+    profile_series: str = 'AISC (Inch)',
+    member_type: str = '2',
+    structural_use: str = '1',
+    axis_align: str = '1',
+    start_condition: str = '3',
+    end_condition: str = '3',
+    material: str = '',
 ) -> RafterCommand:
     return {
         'class': rafter_class,
@@ -28,6 +36,14 @@ def make_rafter_command(
         'height': height,
         'elevation': elevation,
         'end_elevation': end_elevation,
+        'profile_shape': profile_shape,
+        'profile_series': profile_series,
+        'member_type': member_type,
+        'structural_use': structural_use,
+        'axis_align': axis_align,
+        'start_condition': start_condition,
+        'end_condition': end_condition,
+        'material': material,
     }
 
 
@@ -122,7 +138,32 @@ class TestExecuteRafters:
         assert ('MemberID', '45×105 - 垂木') in rfields
         assert ('MajorBreadth', '45') in rfields
         assert ('MajorDepth', '105') in rfields
+        assert ('MinorBreadth', '45') in rfields
+        assert ('MinorDepth', '105') in rfields
         assert ('ProfileShape', 'Rectangle') in rfields
+        # 実在しない 'B'/'D' フィールドはもう設定しない。
+        field_names = {c.args[2] for c in vs_mock.SetRField.call_args_list}
+        assert 'B' not in field_names
+        assert 'D' not in field_names
+
+    def test_proxies_member_parameters(self) -> None:
+        """軸組ツールからプロキシしたパラメータが同名フィールドへ転送される。"""
+        vs_mock = _make_vs_mock()
+        _run_execute_rafters(vs_mock, [
+            make_rafter_command(
+                profile_shape='Rectangle', profile_series='JIS',
+                member_type='2', structural_use='4', axis_align='4',
+                start_condition='2', end_condition='2',
+                material='木製 SPF 軸組 MT'),
+        ])
+        rfields = {(c.args[2], c.args[3]) for c in vs_mock.SetRField.call_args_list}
+        assert ('ProfileSeries', 'JIS') in rfields
+        assert ('MemberType', '2') in rfields
+        assert ('StructuralUse', '4') in rfields
+        assert ('AxisAlign', '4') in rfields
+        assert ('StartCondition', '2') in rfields
+        assert ('EndCondition', '2') in rfields
+        assert ('MemberMaterial', '木製 SPF 軸組 MT') in rfields
 
     def test_fallback_to_line_when_plugin_unavailable(self) -> None:
         """構造材プラグインが使えない場合は通常線にフォールバックする。"""

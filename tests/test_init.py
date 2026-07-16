@@ -75,6 +75,29 @@ class TestReadHelpers:
         assert params['width'] == 45.0
         assert params['height'] == 60.0
         assert params['spacing'] == 2000.0
+        # 軸組ツールからプロキシするパラメータは空欄のとき既定値に落ちる。
+        assert params['profile_shape'] == pkg.DEFAULT_PROFILE_SHAPE
+        assert params['profile_series'] == pkg.DEFAULT_PROFILE_SERIES
+        assert params['member_type'] == pkg.DEFAULT_MEMBER_TYPE
+        assert params['structural_use'] == pkg.DEFAULT_STRUCTURAL_USE
+        assert params['axis_align'] == pkg.DEFAULT_AXIS_ALIGN
+        assert params['start_condition'] == pkg.DEFAULT_START_CONDITION
+        assert params['end_condition'] == pkg.DEFAULT_END_CONDITION
+        assert params['material'] == pkg.DEFAULT_MATERIAL
+
+    def test_read_parameters_proxies_member_settings(self) -> None:
+        vs_mock = _make_vs_mock(params={
+            'StructuralUse': '4', 'AxisAlign': '4',
+            'StartCondition': '2', 'EndCondition': '2',
+            'ProfileSeries': 'JIS', 'MemberMaterial': '木製 SPF 軸組 MT',
+        })
+        params = pkg._read_parameters(vs_mock, object())
+        assert params['structural_use'] == '4'
+        assert params['axis_align'] == '4'
+        assert params['start_condition'] == '2'
+        assert params['end_condition'] == '2'
+        assert params['profile_series'] == 'JIS'
+        assert params['material'] == '木製 SPF 軸組 MT'
 
     def test_read_parameters_custom_class(self) -> None:
         vs_mock = _make_vs_mock(params={'RafterClass': '垂木クラス'})

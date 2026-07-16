@@ -31,6 +31,16 @@
   - ``Height``     実数  垂木成 (mm)
   - ``Spacing``    実数  垂木の間隔 (mm)
   - ``RafterClass`` 文字 垂木に割り当てる作図クラス名
+  - 軸組ツール(StructuralMember)から**プロキシ**するパラメータ(構造・断面の
+    要点のみ。ここで読み取った値をそのまま各垂木の同名レコードフィールドへ転送):
+    - ``ProfileShape``   文字 断面形状(既定 ``Rectangle``)
+    - ``ProfileSeries``  文字 断面シリーズ(既定 ``AISC (Inch)``)
+    - ``MemberType``     文字 部材タイプ(既定 ``2``)
+    - ``StructuralUse``  文字 構造用途(既定 ``1``)
+    - ``AxisAlign``      文字 軸の位置合わせ(既定 ``1``)
+    - ``StartCondition`` 文字 始端条件(既定 ``3``)
+    - ``EndCondition``   文字 終端条件(既定 ``3``)
+    - ``MemberMaterial`` 文字 部材材質(既定は空=無指定)
 
 軒の出があると屋根の水平投影面の軒側の辺は軒先であって地廻りではないため、地廻り
 基準線はパスの辺ではなく **2 つのコントロールポイントで与える内蔵の直線**で指定
@@ -66,6 +76,18 @@ PARAM_WIDTH = 'Width'
 PARAM_HEIGHT = 'Height'
 PARAM_SPACING = 'Spacing'
 PARAM_CLASS = 'RafterClass'
+# 軸組ツール(StructuralMember)で設定するパラメータのプロキシ。ここで読み取った
+# 値をそのまま各垂木(StructuralMember)の同名レコードフィールドへ転送する
+# (構造・断面の要点のみ。表示や Cover 等は VectorWorks の既定に委ねる)。
+# PIO のパラメータ(レコードフィールド)名は転送先と同名にして対応を明確にする。
+PARAM_PROFILE_SHAPE = 'ProfileShape'
+PARAM_PROFILE_SERIES = 'ProfileSeries'
+PARAM_MEMBER_TYPE = 'MemberType'
+PARAM_STRUCTURAL_USE = 'StructuralUse'
+PARAM_AXIS_ALIGN = 'AxisAlign'
+PARAM_START_CONDITION = 'StartCondition'
+PARAM_END_CONDITION = 'EndCondition'
+PARAM_MATERIAL = 'MemberMaterial'
 # 地廻り基準線のコントロールポイント。VectorWorks はコントロールポイントの
 # ユニバーサル名を ControlPoint01/02... と自動採番で固定し(フィールド名を
 # 変えても座標の読み取りには使えない)、座標はその名前 + X/Y のフィールドで
@@ -81,6 +103,15 @@ DEFAULT_WIDTH = 45.0         # 垂木幅 45mm
 DEFAULT_HEIGHT = 60.0        # 垂木成 60mm
 DEFAULT_SPACING = 455.0      # 1.5 尺 ≒ 455mm
 DEFAULT_CLASS = '04構造-02木造-05小屋組-05垂木'
+# 軸組ツールからプロキシするパラメータの既定値(空欄時に使う)。
+DEFAULT_PROFILE_SHAPE = 'Rectangle'    # 矩形断面
+DEFAULT_PROFILE_SERIES = 'AISC (Inch)'
+DEFAULT_MEMBER_TYPE = '2'
+DEFAULT_STRUCTURAL_USE = '1'
+DEFAULT_AXIS_ALIGN = '1'
+DEFAULT_START_CONDITION = '3'
+DEFAULT_END_CONDITION = '3'
+DEFAULT_MATERIAL = ''                  # 無指定(材質を割り当てない)
 
 
 def _to_float(value: Any, default: float) -> float:
@@ -91,6 +122,19 @@ def _to_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _read_str(vs: Any, obj: Any, field: str, default: str) -> str:
+    """vs のパラメータ値を文字列で読む(空欄は default)。
+
+    軸組ツール(StructuralMember)からプロキシする文字列パラメータを読むために
+    使う。``GetRField`` は未設定/空欄で ``''`` を返すため、その場合は既定値に
+    落とす(明示的に空にしたい ``MemberMaterial`` は既定が ``''`` なので影響なし)。
+    """
+    value = vs.GetRField(obj, PLUGIN_NAME, field)
+    if value is None or value == '':
+        return default
+    return str(value)
 
 
 def _read_path_points(vs: Any, obj: Any) -> list[list[float]]:
@@ -148,6 +192,22 @@ def _read_parameters(vs: Any, obj: Any) -> dict[str, Any]:
         'spacing': _to_float(
             vs.GetRField(obj, PLUGIN_NAME, PARAM_SPACING), DEFAULT_SPACING),
         'rafter_class': rafter_class,
+        # 軸組ツール(StructuralMember)からプロキシするパラメータ。
+        'profile_shape': _read_str(
+            vs, obj, PARAM_PROFILE_SHAPE, DEFAULT_PROFILE_SHAPE),
+        'profile_series': _read_str(
+            vs, obj, PARAM_PROFILE_SERIES, DEFAULT_PROFILE_SERIES),
+        'member_type': _read_str(
+            vs, obj, PARAM_MEMBER_TYPE, DEFAULT_MEMBER_TYPE),
+        'structural_use': _read_str(
+            vs, obj, PARAM_STRUCTURAL_USE, DEFAULT_STRUCTURAL_USE),
+        'axis_align': _read_str(
+            vs, obj, PARAM_AXIS_ALIGN, DEFAULT_AXIS_ALIGN),
+        'start_condition': _read_str(
+            vs, obj, PARAM_START_CONDITION, DEFAULT_START_CONDITION),
+        'end_condition': _read_str(
+            vs, obj, PARAM_END_CONDITION, DEFAULT_END_CONDITION),
+        'material': _read_str(vs, obj, PARAM_MATERIAL, DEFAULT_MATERIAL),
     }
 
 

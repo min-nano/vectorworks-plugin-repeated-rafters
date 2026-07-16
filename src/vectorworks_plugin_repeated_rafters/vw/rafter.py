@@ -55,17 +55,23 @@ def draw_rafter(command: RafterCommand) -> Any:
         vs.Move3D(x1, y1, z1)
         vs.SetClass(obj, command['class'])
         vs.SetRField(obj, PLUGIN_NAME, 'MemberID', command['member_id'])
-        vs.SetRField(obj, PLUGIN_NAME, 'ProfileShape', 'Rectangle')
+        # 断面寸法は垂木の Width/Height から決める(矩形断面のため Minor も同値)。
         vs.SetRField(obj, PLUGIN_NAME, 'MajorBreadth', str(w))
         vs.SetRField(obj, PLUGIN_NAME, 'MajorDepth', str(h))
-        vs.SetRField(obj, PLUGIN_NAME, 'B', str(w))
-        vs.SetRField(obj, PLUGIN_NAME, 'D', str(h))
-        vs.SetRField(obj, PLUGIN_NAME, 'MemberType', '2')
-        vs.SetRField(obj, PLUGIN_NAME, 'StructuralUse', '1')
-        vs.SetRField(obj, PLUGIN_NAME, 'AxisAlign', '1')
-        vs.SetRField(obj, PLUGIN_NAME, 'EndCondition', '3')
-        vs.SetRField(obj, PLUGIN_NAME, 'StartCondition', '3')
-        vs.SetRField(obj, PLUGIN_NAME, 'ProfileSeries', 'AISC (Inch)')
+        vs.SetRField(obj, PLUGIN_NAME, 'MinorBreadth', str(w))
+        vs.SetRField(obj, PLUGIN_NAME, 'MinorDepth', str(h))
+        # 軸組ツール(StructuralMember)からプロキシしたパラメータを、同名の
+        # レコードフィールドへそのまま転送する(document.MEMBER_FIELD_MAP の対応)。
+        vs.SetRField(obj, PLUGIN_NAME, 'ProfileShape', command['profile_shape'])
+        vs.SetRField(obj, PLUGIN_NAME, 'ProfileSeries', command['profile_series'])
+        vs.SetRField(obj, PLUGIN_NAME, 'MemberType', command['member_type'])
+        vs.SetRField(
+            obj, PLUGIN_NAME, 'StructuralUse', command['structural_use'])
+        vs.SetRField(obj, PLUGIN_NAME, 'AxisAlign', command['axis_align'])
+        vs.SetRField(
+            obj, PLUGIN_NAME, 'StartCondition', command['start_condition'])
+        vs.SetRField(obj, PLUGIN_NAME, 'EndCondition', command['end_condition'])
+        vs.SetRField(obj, PLUGIN_NAME, 'MemberMaterial', command['material'])
         vs.ResetObject(obj)
         return obj
     # フォールバック: 通常の直線(水平投影)

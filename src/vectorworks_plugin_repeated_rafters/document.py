@@ -10,10 +10,10 @@
 (垂木=StructuralMember)だけを描くため、命令セットは ``rafters`` の 1 リスト
 だけを持つ(将来、母屋・鼻母屋などを追加する場合はここへ命令種別を足す)。
 
-スキーマ (version 1):
+スキーマ (version 2):
 
     {
-        "version": 1,
+        "version": 2,
         "rafters": [
             {
                 # 垂木 1 本を VectorWorks の構造材ツール(軸組ツール、
@@ -35,7 +35,19 @@
                 # はこの傾きをパス(3D)そのものに持たせて描く(ストーリの無い単独
                 # PIO のため高さバインドは使わない)。
                 "elevation": -120.0,
-                "end_elevation": 300.0
+                "end_elevation": 300.0,
+                # 以下は「軸組ツール(StructuralMember)で設定するパラメータ」を
+                # PIO パラメータとして公開し、描画フェーズへプロキシ(そのまま転送)
+                # する値。描画フェーズは各値を同名の StructuralMember レコード
+                # フィールドへ ``SetRField`` する。構造・断面の要点のみを対象とする。
+                "profile_shape": "Rectangle",   # 断面形状 (ProfileShape)
+                "profile_series": "AISC (Inch)",  # 断面シリーズ (ProfileSeries)
+                "member_type": "2",            # 部材タイプ (MemberType)
+                "structural_use": "1",         # 構造用途 (StructuralUse)
+                "axis_align": "1",             # 軸の位置合わせ (AxisAlign)
+                "start_condition": "3",        # 始端条件 (StartCondition)
+                "end_condition": "3",          # 終端条件 (EndCondition)
+                "material": ""                 # 部材材質 (MemberMaterial。空=無指定)
             }
         ]
     }
@@ -45,7 +57,21 @@ from __future__ import annotations
 import json
 from typing import Any, TypedDict
 
-DOCUMENT_VERSION = 1
+DOCUMENT_VERSION = 2
+
+# 軸組ツール(StructuralMember)からプロキシする文字列フィールド。命令セットの
+# キー名を StructuralMember のレコードフィールド名へ対応付ける。描画フェーズは
+# この対応に従い、各値をそのまま ``SetRField`` へ転送する(構造・断面の要点のみ)。
+MEMBER_FIELD_MAP: dict[str, str] = {
+    'profile_shape': 'ProfileShape',
+    'profile_series': 'ProfileSeries',
+    'member_type': 'MemberType',
+    'structural_use': 'StructuralUse',
+    'axis_align': 'AxisAlign',
+    'start_condition': 'StartCondition',
+    'end_condition': 'EndCondition',
+    'material': 'MemberMaterial',
+}
 
 
 # 'class' キーが Python の予約語のため functional 構文で定義する
@@ -58,6 +84,15 @@ RafterCommand = TypedDict('RafterCommand', {
     'height': float,
     'elevation': float,
     'end_elevation': float,
+    # 軸組ツール(StructuralMember)からプロキシする値(MEMBER_FIELD_MAP のキー)。
+    'profile_shape': str,
+    'profile_series': str,
+    'member_type': str,
+    'structural_use': str,
+    'axis_align': str,
+    'start_condition': str,
+    'end_condition': str,
+    'material': str,
 })
 """垂木 1 本を構造材ツール(StructuralMember)で描画する命令。
 
@@ -66,6 +101,12 @@ start/end は垂木の水平投影線(始端=軒先側=低い側、終端=棟側
 は始端/終端の Z 高さで、高さ 0 の基準は地廻り基準線(軒の出側は負になりうる)。
 差が全長の立ち上がり(= 水平投影長 × 勾配/10)。class は割り当てる構造クラス名、
 member_id は "{幅}×{成} - 垂木" 形式の構造材 ID。
+
+profile_shape 以降は「軸組ツール(StructuralMember)で設定するパラメータ」を
+PIO パラメータとして公開し、描画フェーズへプロキシ(そのまま転送)する値。
+描画フェーズは ``MEMBER_FIELD_MAP`` に従い各値を同名の StructuralMember レコード
+フィールドへ設定する。断面・構造の要点のみを対象とし、表示(Above/At/Below)や
+Cover/Centerline/Caps は対象外(VectorWorks の既定に委ねる)。
 """
 
 
@@ -111,6 +152,10 @@ def _validate_rafter(index: int, command: Any) -> None:
     for key in ('width', 'height', 'elevation', 'end_elevation'):
         _require(_is_number(command.get(key)),
                  f'{where}.{key} は数値である必要があります')
+    # 軸組ツールからプロキシする値はいずれも文字列(空文字も可)。
+    for key in MEMBER_FIELD_MAP:
+        _require(isinstance(command.get(key), str),
+                 f'{where}.{key} は文字列である必要があります')
 
 
 def validate_document(document: Any) -> Document:

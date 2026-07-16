@@ -256,6 +256,14 @@ def build_rafter_commands(
     height: float,
     spacing: float,
     rafter_class: str,
+    profile_shape: str,
+    profile_series: str,
+    member_type: str,
+    structural_use: str,
+    axis_align: str,
+    start_condition: str,
+    end_condition: str,
+    material: str,
 ) -> list[RafterCommand]:
     """屋根水平投影面と各パラメータから垂木命令のリストを組み立てる。
 
@@ -271,6 +279,17 @@ def build_rafter_commands(
         height: 垂木成 (mm)。
         spacing: 垂木の間隔 (mm, 基準線に沿った配置間隔)。
         rafter_class: 各垂木に割り当てる作図クラス名。
+        profile_shape: 軸組ツールからプロキシする断面形状 (StructuralMember の
+            ``ProfileShape``。通常 ``Rectangle``)。以下 7 つと共に、ジオメトリ
+            計算はこれらを解釈せず各命令へそのまま載せ、描画フェーズが対応する
+            StructuralMember レコードフィールドへ転送する(構造・断面の要点のみ)。
+        profile_series: 断面シリーズ (``ProfileSeries``)。
+        member_type: 部材タイプ (``MemberType``)。
+        structural_use: 構造用途 (``StructuralUse``)。
+        axis_align: 軸の位置合わせ (``AxisAlign``)。
+        start_condition: 始端条件 (``StartCondition``)。
+        end_condition: 終端条件 (``EndCondition``)。
+        material: 部材材質 (``MemberMaterial``。空文字は無指定)。
 
     Returns:
         垂木命令のリスト。頂点が 3 点未満・基準線が退化・間隔が 0 以下など
@@ -342,5 +361,15 @@ def build_rafter_commands(
             'height': height,
             'elevation': t_min * slope / 10.0,
             'end_elevation': t_max * slope / 10.0,
+            # 軸組ツール(StructuralMember)からプロキシする値。ジオメトリ計算は
+            # 解釈せず、そのまま各命令へ載せる(描画フェーズが SetRField で転送)。
+            'profile_shape': profile_shape,
+            'profile_series': profile_series,
+            'member_type': member_type,
+            'structural_use': structural_use,
+            'axis_align': axis_align,
+            'start_condition': start_condition,
+            'end_condition': end_condition,
+            'material': material,
         })
     return commands
