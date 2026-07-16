@@ -28,9 +28,11 @@ pip install --target "$HOME/Library/Application Support/Vectorworks/2025/Python 
 pip install --target "%APPDATA%\Nemetschek\Vectorworks\2025\Python Externals" .
 ```
 
-> VectorWorks のバージョンが異なる場合は `2025` の部分を実際のバージョン番号に置き換えてください。更新するときは末尾に `--upgrade` を付けて再実行します。
+> **インストール先のバージョンは、実際に実行する VectorWorks のバージョンと一致させてください。** 上のパスは 2025 の例です。例えば **Vectorworks 2026** で使うなら `2025` を `2026` に置き換えます（macOS なら `"$HOME/Library/Application Support/Vectorworks/2026/Python Externals"`）。バージョンの異なるフォルダに入れると、そのバージョンの VectorWorks からは読み込まれません。更新するときは末尾に `--upgrade` を付けて再実行します。
 
 Python Externals フォルダは VectorWorks が自動的に `sys.path` に追加するため、インストール後は追加の設定なしにパッケージを参照できます。
+
+> **`ModuleNotFoundError: No module named 'vectorworks_plugin_repeated_rafters'` が出る場合**: 実行中の VectorWorks のバージョンの Python Externals フォルダにパッケージが入っていません（別バージョンのフォルダに入れた／未インストール）。上記コマンドのバージョン番号を実行中の VW に合わせて入れ直してください。なお import 名（`vectorworks_plugin_repeated_rafters`、アンダースコア区切り）はリポジトリ名（`vectorworks-plugin-repeated-rafters`、ハイフン区切り）と綴りが異なりますが、これは Python の仕様どおりで正しく、`main.py` もこの import 名を使っています。
 
 ## VectorWorks へのプラグイン登録
 
